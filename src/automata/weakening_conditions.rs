@@ -27,15 +27,15 @@ pub fn rewrite_condition_function(
     for (i, _) in current.iter().enumerate() {
         let mut current_result_i = None;
         for j in 0..k {
-            if is_saturated(&ctx, i, j) {
-                let part_1 = local_after_annotated(&ctx.psf_context, &current[j], &letter, &ctx.c_rewrite_c_sets[i][j]);
+            if is_saturated(ctx, i, j) {
+                let part_1 = local_after_annotated(&ctx.psf_context, &current[j], letter, &ctx.c_rewrite_c_sets[i][j]);
                 let result = ctx.c_sets[i]
                     .iter()
                     .map(|ci| {
                         local_after_annotated(
                             &ctx.psf_context,
                             &ci.rewrite(&ctx.psf_context, &ctx.c_sets[j]).weaken_condition(&ctx.psf_context),
-                            &letter,
+                            letter,
                             &ctx.c_rewrite_c_sets[i][j],
                         )
                     })
@@ -54,7 +54,6 @@ pub fn rewrite_condition_function(
             }
         }
         result.push(current_result_i.unwrap().simplify());
-        // println!("{i}: {}", result.last().unwrap().latex());
     }
     result
 }

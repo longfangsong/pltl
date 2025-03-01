@@ -17,7 +17,7 @@ fn not_op(input: &str) -> IResult<&str, UnaryOp> {
 }
 
 fn temporal_unary_op(input: &str) -> IResult<&str, UnaryOp> {
-    const OPS: [(&'static str, UnaryOp); 8] = [
+    const OPS: [(&str, UnaryOp); 8] = [
         ("X", UnaryOp::Next),
         ("Y", UnaryOp::Yesterday),
         ("~Y", UnaryOp::WeakYesterday),
@@ -56,8 +56,16 @@ fn or_op(input: &str) -> IResult<&str, BinaryOp> {
     .parse(input)
 }
 
+fn implies_op(input: &str) -> IResult<&str, &str> {
+    recognize(alt((tag("→"), tag("->")))).parse(input)
+}
+
+fn equiv_op(input: &str) -> IResult<&str, &str> {
+    recognize(alt((tag("↔"), tag("<->")))).parse(input)
+}
+
 fn temporal_binary_op(input: &str) -> IResult<&str, BinaryOp> {
-    const OPS: [(&'static str, BinaryOp); 10] = [
+    const OPS: [(&str, BinaryOp); 10] = [
         ("U", BinaryOp::Until),
         ("S", BinaryOp::Since),
         ("W", BinaryOp::WeakUntil),
@@ -202,8 +210,52 @@ fn or(input: &str) -> IResult<&str, PLTL> {
     .parse(input)
 }
 
-pub fn parse(input: &str) -> IResult<&str, PLTL> {
+pub fn higher_than_implies(input: &str) -> IResult<&str, PLTL> {
     alt((or, higher_than_or)).parse(input)
+}
+
+pub fn implies(input: &str) -> IResult<&str, PLTL> {
+    let (input, first) = higher_than_implies(input)?;
+    fold_many1(
+        pair(
+            preceded(multispace0, implies_op),
+            preceded(multispace0, higher_than_implies),
+        ),
+        move || first.clone(),
+        |init, (_, g)| PLTL::new_binary(BinaryOp::Or, PLTL::new_unary(UnaryOp::Not, init), g),
+    )
+    .parse(input)
+}
+
+pub fn higher_than_equiv(input: &str) -> IResult<&str, PLTL> {
+    alt((implies, higher_than_implies)).parse(input)
+}
+
+pub fn equiv(input: &str) -> IResult<&str, PLTL> {
+    let (input, first) = higher_than_equiv(input)?;
+    fold_many1(
+        pair(
+            preceded(multispace0, equiv_op),
+            preceded(multispace0, higher_than_equiv),
+        ),
+        move || first.clone(),
+        |init, (_, g)| {
+            PLTL::new_binary(
+                BinaryOp::Or,
+                PLTL::new_binary(BinaryOp::And, init.clone(), g.clone()),
+                PLTL::new_binary(
+                    BinaryOp::And,
+                    PLTL::new_unary(UnaryOp::Not, init.clone()),
+                    PLTL::new_unary(UnaryOp::Not, g.clone()),
+                ),
+            )
+        },
+    )
+    .parse(input)
+}
+
+pub fn parse(input: &str) -> IResult<&str, PLTL> {
+    alt((equiv, higher_than_equiv)).parse(input)
 }
 
 impl FromStr for PLTL {
@@ -265,5 +317,24 @@ mod tests {
                 PLTL::new_atom("c")
             )
         );
+
+        let input = r"a <-> b";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTL::new_binary(
+                BinaryOp::Or,
+                PLTL::new_binary(BinaryOp::And, PLTL::new_atom("a"), PLTL::new_atom("b")),
+                PLTL::new_binary(BinaryOp::And, PLTL::new_unary(UnaryOp::Not, PLTL::new_atom("a")), PLTL::new_unary(UnaryOp::Not, PLTL::new_atom("b")))
+            )
+        );
+
+        let input = r"a -> b";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTL::new_binary(BinaryOp::Or, PLTL::new_unary(UnaryOp::Not, PLTL::new_atom("a")), PLTL::new_atom("b"))
+        );
+        
     }
 }

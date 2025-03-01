@@ -1,5 +1,4 @@
 use clap::{Parser, ArgGroup};
-use std::path::PathBuf;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::collections::HashSet;
@@ -15,9 +14,6 @@ use hoars::output::to_hoa;
         .args(&["filein", "input"]),
 ))]
 struct Args {
-    // #[arg(short = 'a', long)]
-    // annotations: bool,
-
     #[arg(short = 'I', long)]
     filein: Option<String>,
 
@@ -27,29 +23,8 @@ struct Args {
     #[arg(short = 'O', long)]
     fileout: Option<String>,
 
-    // #[arg(short = 'p', long)]
-    // parallel: bool,
-
-    // #[arg(short = 'w', long)]
-    // worker: Option<usize>,
-
-    // #[arg(short = 'c', long)]
-    // complete: bool,
-
-    // #[arg(short = 'na', long = "noacceptance")]
-    // no_acceptance: bool,
-
-    // #[arg(short = 'ne', long = "noeager")]
-    // no_eager: bool,
-
-    // #[arg(short = 'np', long = "nosuspend")]
-    // no_suspend: bool,
-
-    // #[arg(short = 'ns', long = "nosupport")]
-    // no_support: bool,
-
-    #[arg(last = true)]
-    direct_input: Option<String>,
+    #[arg(trailing_var_arg = true)]
+    direct_input: Vec<String>,
 }
 
 fn main() -> io::Result<()> {
@@ -68,36 +43,30 @@ fn main() -> io::Result<()> {
         }
     } else if let Some(input_str) = args.input {
         input_str
-    } else if let Some(direct_input) = args.direct_input {
-        direct_input
+    } else if let Some(direct_input) = args.direct_input.first() {
+        direct_input.clone()
     } else {
         let mut buffer = String::new();
         io::stdin().read_to_string(&mut buffer)?;
         buffer
     };
 
-    /* 1 */
-    // 解析 PLTL 公式
     let pltl_formula = match parse(&input) {
         Ok((rest, formula)) => formula.normal_form(),
         Err(e) => {
-            eprintln!("解析 PLTL 公式时出错: {}", e);
+            eprintln!("Cannot parse formula: {}", e);
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "无效的 PLTL 公式"));
         }
     };
     
-    // 提取公式中的原子命题
     let atoms = extract_atoms(&pltl_formula);
     
-    // 创建上下文和初始状态
     let context = Context::new(&pltl_formula);
     let initial_state = State::new(&context);
     
-    // 生成自动机
     let automaton = initial_state.dump_automata(&context, &atoms);
     
-    // 转换为 HOA 格式
-    let hoa_automaton = automaton.dump_hoa(&pltl_formula.to_string());
+    let hoa_automaton = automaton.dump_hoa(&format!("\"{pltl_formula}\""));
     let output = to_hoa(&hoa_automaton);
     
     if let Some(file_path) = args.fileout {

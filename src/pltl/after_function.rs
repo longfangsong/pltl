@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
+use crate::utils::powerset;
 use crate::utils::BitSet;
-
 use super::{
     annotated::Annotated,
     past_subformula::{PastSubformulaSet, PastSubformularSetContext},
-    utils::{self, conjunction, disjunction},
+    utils::{conjunction, disjunction},
     BinaryOp, UnaryOp, PLTL,
 };
 
@@ -146,7 +146,8 @@ pub fn local_after_annotated(
 }
 
 pub fn local_after(f: &PLTL, letter: &HashSet<String>, past_st: &HashSet<PLTL>) -> PLTL {
-    let result = match f {
+    
+    match f {
         PLTL::Top => PLTL::Top,
         PLTL::Bottom => PLTL::Bottom,
         PLTL::Atom(atom) => {
@@ -200,105 +201,13 @@ pub fn local_after(f: &PLTL, letter: &HashSet<String>, past_st: &HashSet<PLTL>) 
             _,
         ) => local_after(&f.weaken_condition(), letter, past_st),
         _ => unreachable!(),
-    };
-    // println!("af_l({f}, {:?}, {:?}) = {result}", letter, past_st);
-    result
+    }
 }
 
 pub fn after_function(f: &PLTL, letter: &HashSet<String>) -> PLTL {
     let psf_set: HashSet<PLTL> = f.past_subformulas().into_iter().cloned().collect();
-    let powerset = utils::powerset(&psf_set);
-    let result = disjunction(powerset.iter().map(|set| local_after(f, &letter, set))).simplify();
+    let powerset = powerset(&psf_set);
+    let result = disjunction(powerset.iter().map(|set| local_after(f, letter, set))).simplify();
     result
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::{pltl::PLTL, utils::*};
-
-    #[test]
-    fn test_local_after() {
-        // let ltl: PLTL = "a U b".parse().unwrap();
-        // let ctx = PastSubformularSetContext::new(&ltl);
-        // let f = Annotated::Atom("a".to_string());
-        // let past_st = PastSubformulaSet {
-        //     existence: 0,
-        //     state: 0,
-        // };
-        // let letter = HashSet::from(["a".to_string()]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // assert_eq!(after, Annotated::Top);
-
-        // let ltl: PLTL = "p W ⊥".parse().unwrap();
-        // let ctx = PastSubformularSetContext::new(&ltl);
-        // let f = Annotated::from_pltl(&ltl, &ctx);
-        // let past_st = PastSubformulaSet {
-        //     existence: 0,
-        //     state: 0,
-        // };
-        // let letter = HashSet::from([]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // assert_eq!(after, Annotated::Bottom);
-
-        // let past_st = PastSubformulaSet {
-        //     existence: 0,
-        //     state: 0,
-        // };
-        // let letter = HashSet::from(["p".to_string()]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // assert_eq!(after.to_pltl(&ctx).to_string(), "p W ⊥");
-
-        // let ltl = "Gp & Fq".parse::<PLTL>().unwrap().normal_form();
-        // let ctx = PastSubformularSetContext::new(&ltl);
-        // let f = Annotated::from_pltl(&ltl, &ctx);
-        // let past_st = PastSubformulaSet {
-        //     existence: 0,
-        //     state: 0,
-        // };
-        // let letter = HashSet::from([]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // println!("{after}");
-        // let letter = HashSet::from(["p".to_string()]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // println!("{after}");
-        // let letter = HashSet::from(["q".to_string()]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // println!("{after}");
-        // let letter = HashSet::from(["p".to_string(), "q".to_string()]);
-        // let after = local_after_annotated(&ctx, &f, &letter, &past_st);
-        // println!("{after}");
-
-        let ltl0 = "p W ⊥".parse::<PLTL>().unwrap().normal_form();
-        let ltl1 = "⊤ U q".parse::<PLTL>().unwrap().normal_form();
-        let ltl2 = "(⊤ U q) ∧ (p W ⊥)".parse::<PLTL>().unwrap().normal_form();
-        let letter = HashSet::from([]);
-        let after0 = after_function(&ltl0, &letter);
-        let after1 = after_function(&ltl1, &letter);
-        let after2 = after_function(&ltl2, &letter);
-        println!("{after0}");
-        println!("{after1}");
-        println!("{after2}");
-        let letter = HashSet::from(["p".to_string()]);
-        let after0 = after_function(&ltl0, &letter);
-        let after1 = after_function(&ltl1, &letter);
-        let after2 = after_function(&ltl2, &letter);
-        println!("{after0}");
-        println!("{after1}");
-        println!("{after2}");
-        let letter = HashSet::from(["q".to_string()]);
-        let after0 = after_function(&ltl0, &letter);
-        let after1 = after_function(&ltl1, &letter);
-        let after2 = after_function(&ltl2, &letter);
-        println!("{after0}");
-        println!("{after1}");
-        println!("{after2}");
-        let letter = HashSet::from(["p".to_string(), "q".to_string()]);
-        let after0 = after_function(&ltl0, &letter);
-        let after1 = after_function(&ltl1, &letter);
-        let after2 = after_function(&ltl2, &letter);
-        println!("{after0}");
-        println!("{after1}");
-        println!("{after2}");
-    }
-}

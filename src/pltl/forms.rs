@@ -438,7 +438,7 @@ impl PLTL {
                 let (lhs, changed_lhs) = lhs.simplify_until_simplest();
                 let (rhs, changed_rhs) = rhs.simplify_until_simplest();
                 (
-                    PLTL::new_binary(binary_op.clone(), lhs, rhs),
+                    PLTL::new_binary(*binary_op, lhs, rhs),
                     changed_lhs || changed_rhs,
                 )
             }
@@ -457,10 +457,6 @@ impl PLTL {
     }
 
     pub fn normal_form(&self) -> Self {
-        // todo: is it possible to have a "really normal" form which can used for checking two PLTLs' semantic equalness?
-        // For regex and DFA I believe we can have such a normal form, but I'm not sure about the w-automatas.
-        // We do can normalize the generated w-automata and reconstruct the PLTL from it,
-        // but I wonder if we can have a more efficient way.
         self.remove_FGOH()
             .negation_normal_form()
             .simplify()
@@ -469,82 +465,3 @@ impl PLTL {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::pltl::{parse, BinaryOp, UnaryOp, PLTL};
-
-    #[test]
-    fn test_normal_form() {
-        let pltl = parse("(a ∧ b) ∧ (c ∧ d)").unwrap().1;
-        let normal_form = pltl.normal_form();
-        println!("{}", normal_form.latex());
-
-        let pltl2 = parse("(a ∧ b ∧ a) | (c ∧ d) | (a ∧ b)").unwrap().1;
-        let normal_form2 = pltl2.normal_form();
-        println!("{}", normal_form2.latex());
-
-        let pltl3 = parse("(c | a) ∧ (d | b)").unwrap().1;
-        let normal_form3 = pltl3.normal_form();
-        println!("{}", normal_form3.latex());
-    }
-
-    #[test]
-    fn test_simplify() {
-        let pltl = PLTL::new_binary(
-            BinaryOp::And,
-            PLTL::new_atom("p"),
-            PLTL::new_binary(
-                BinaryOp::And,
-                PLTL::new_binary(
-                    BinaryOp::And,
-                    PLTL::new_binary(
-                        BinaryOp::And,
-                        PLTL::new_atom("p"),
-                        PLTL::new_binary(
-                            BinaryOp::Release,
-                            PLTL::Bottom,
-                            PLTL::new_binary(
-                                BinaryOp::Or,
-                                PLTL::new_atom("q"),
-                                PLTL::new_unary(UnaryOp::Next, PLTL::new_atom("p")),
-                            ),
-                        ),
-                    ),
-                    PLTL::new_binary(
-                        BinaryOp::Release,
-                        PLTL::Bottom,
-                        PLTL::new_binary(
-                            BinaryOp::Release,
-                            PLTL::Bottom,
-                            PLTL::new_binary(
-                                BinaryOp::Or,
-                                PLTL::new_atom("q"),
-                                PLTL::new_unary(UnaryOp::Next, PLTL::new_atom("p")),
-                            ),
-                        ),
-                    ),
-                ),
-                PLTL::new_binary(
-                    BinaryOp::Release,
-                    PLTL::Bottom,
-                    PLTL::new_binary(
-                        BinaryOp::Or,
-                        PLTL::new_atom("q"),
-                        PLTL::new_unary(UnaryOp::Next, PLTL::new_atom("p")),
-                    ),
-                ),
-            ),
-        );
-        let simplified = pltl.simplify();
-        println!("{}", simplified.latex());
-    }
-
-    #[test]
-    fn test_simplify2() {
-        let pltl = parse("(⊥ ∨ (⊥ R (q ∨ Xp))) ∧ (⊥ ∨ p) ∧ (⊥ ∨ (⊥ R (⊥ R (q ∨ Xp))))")
-            .unwrap()
-            .1;
-        let simplified = pltl.simplify();
-        println!("{}", simplified.latex());
-    }
-}

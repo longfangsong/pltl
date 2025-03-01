@@ -83,7 +83,7 @@ impl Annotated {
                         state: context.initial_state,
                     })
                 } else {
-                    Annotated::new_unary(op.clone(), Annotated::from_pltl(arg, context))
+                    Annotated::new_unary(*op, Annotated::from_pltl(arg, context))
                 }
             }
             PLTL::Binary(op, box lhs, box rhs) => {
@@ -99,7 +99,7 @@ impl Annotated {
                     })
                 } else {
                     Annotated::Binary(
-                        op.clone(),
+                        *op,
                         Box::new(Annotated::from_pltl(lhs, context)),
                         Box::new(Annotated::from_pltl(rhs, context)),
                     )
@@ -117,9 +117,9 @@ impl Annotated {
             Annotated::Top => PLTL::Top,
             Annotated::Bottom => PLTL::Bottom,
             Annotated::Atom(atom) => PLTL::Atom(atom.clone()),
-            Annotated::Unary(op, arg) => PLTL::new_unary(op.clone(), arg.to_pltl(context)),
+            Annotated::Unary(op, arg) => PLTL::new_unary(*op, arg.to_pltl(context)),
             Annotated::Binary(op, left, right) => {
-                PLTL::new_binary(op.clone(), left.to_pltl(context), right.to_pltl(context))
+                PLTL::new_binary(*op, left.to_pltl(context), right.to_pltl(context))
             }
             Annotated::PastSubformula(psf) => psf.to_pltl(context),
         }
@@ -135,10 +135,10 @@ impl Annotated {
             Annotated::Bottom => Annotated::Bottom,
             Annotated::Atom(atom) => Annotated::Atom(atom.clone()),
             Annotated::Unary(op, arg) => {
-                Annotated::Unary(op.clone(), Box::new(arg.rewrite_with_set(context, set)))
+                Annotated::Unary(*op, Box::new(arg.rewrite_with_set(context, set)))
             }
             Annotated::Binary(op, left, right) => Annotated::Binary(
-                op.clone(),
+                *op,
                 Box::new(left.rewrite_with_set(context, set)),
                 Box::new(right.rewrite_with_set(context, set)),
             ),
@@ -378,7 +378,7 @@ impl Annotated {
                 let (lhs, changed_lhs) = lhs.simplify_until_simplest();
                 let (rhs, changed_rhs) = rhs.simplify_until_simplest();
                 (
-                    Annotated::new_binary(binary_op.clone(), lhs, rhs),
+                    Annotated::new_binary(*binary_op, lhs, rhs),
                     changed_lhs || changed_rhs,
                 )
             }

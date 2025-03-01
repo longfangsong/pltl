@@ -1,3 +1,7 @@
+use std::ops::RangeInclusive;
+use std::collections::HashSet;
+
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
     type Iter<'a>: Iterator<Item = u32>
@@ -5,6 +9,7 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
         Self: 'a;
 
     fn full_with_size(bits: usize) -> Self;
+    fn power_set(&self, size: usize) -> RangeInclusive<u32>;
     fn get(&self, index: u32) -> bool;
     fn set_bit(&mut self, index: u32);
     fn clear_bit(&mut self, index: u32);
@@ -25,10 +30,12 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
     }
     fn intersection(&self, other: &Self) -> Self;
     fn union(&self, other: &Self) -> Self;
-    fn iter<'a>(&'a self) -> Self::Iter<'a>;
+    fn iter(&self) -> Self::Iter<'_>;
     fn len(&self) -> u32 {
         self.iter().count() as u32
     }
+
+    fn into_par_iter(self) -> impl ParallelIterator<Item = u32>;
 }
 
 pub type BitSet32 = u32;
@@ -66,6 +73,10 @@ impl BitSet for BitSet32 {
         }
     }
 
+    fn power_set(&self, size: usize) -> RangeInclusive<u32> {
+        0..=Self::full_with_size(size)
+    }
+
     fn get(&self, index: u32) -> bool {
         debug_assert!(index < 32);
         self & (1 << index) != 0
@@ -93,7 +104,7 @@ impl BitSet for BitSet32 {
         BitSet::intersection(self, other) == *self
     }
 
-    fn iter<'a>(&'a self) -> Self::Iter<'a> {
+    fn iter(&self) -> Self::Iter<'_> {
         Self::Iter {
             set: self,
             current_index: 0,
@@ -102,5 +113,51 @@ impl BitSet for BitSet32 {
 
     fn len(&self) -> u32 {
         self.count_ones()
+    }
+
+    fn into_par_iter(self) -> impl ParallelIterator<Item = u32> {
+        let mut holder = Vec::with_capacity(32);
+        for index in 0..32u32 {
+            if self & (1 << index) != 0 {
+                holder.push(index);
+            }
+        }
+        holder.into_par_iter()
+    }
+}
+
+pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(origin: &HashSet<T>) -> Vec<HashSet<T>> {
+    let mut result = vec![HashSet::new()];
+    for elem in origin.iter() {
+        let mut new_subsets = Vec::new();
+        for subset in &result {
+            let mut new_subset = subset.clone();
+            new_subset.insert(elem.clone());
+            new_subsets.push(new_subset);
+        }
+        result.extend(new_subsets);
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn test_powerset() {
+        let set = HashSet::from(["a", "b"]);
+        let mut expected = vec![
+            HashSet::new(),
+            HashSet::from(["a"]),
+            HashSet::from(["b"]),
+            HashSet::from(["a", "b"]),
+        ];
+        expected.sort_by_key(|set| set.iter().cloned().collect::<Vec<_>>());
+        let mut powerset = powerset(&set);
+        powerset.sort_by_key(|set| set.iter().cloned().collect::<Vec<_>>());
+        assert_eq!(powerset, expected);
     }
 }

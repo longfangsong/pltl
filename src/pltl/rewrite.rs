@@ -12,7 +12,7 @@ impl UnaryOp {
         if self == &UnaryOp::Yesterday {
             UnaryOp::WeakYesterday
         } else {
-            self.clone()
+            *self
         }
     }
 
@@ -20,7 +20,7 @@ impl UnaryOp {
         if self == &UnaryOp::WeakYesterday {
             UnaryOp::Yesterday
         } else {
-            self.clone()
+            *self
         }
     }
 
@@ -39,7 +39,7 @@ impl BinaryOp {
         match self {
             BinaryOp::Since => BinaryOp::WeakSince,
             BinaryOp::Before => BinaryOp::WeakBefore,
-            _ => self.clone(),
+            _ => *self,
         }
     }
 
@@ -47,7 +47,7 @@ impl BinaryOp {
         match self {
             BinaryOp::WeakSince => BinaryOp::Since,
             BinaryOp::WeakBefore => BinaryOp::Before,
-            _ => self.clone(),
+            _ => *self,
         }
     }
 
@@ -153,7 +153,7 @@ impl PLTL {
     pub fn v_rewrite(&self, s: &HashSet<PLTL>) -> Self {
         match self {
             PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => self.clone(),
-            PLTL::Unary(unary_op, annotated) => Self::new_unary(unary_op.clone(), annotated.v_rewrite(s)),
+            PLTL::Unary(unary_op, annotated) => Self::new_unary(*unary_op, annotated.v_rewrite(s)),
             PLTL::Binary(BinaryOp::Until, box lhs, box rhs) => {
                 if s.contains(self) {
                     let rewritten_lhs = lhs.v_rewrite( s);
@@ -180,7 +180,7 @@ impl PLTL {
     pub fn u_rewrite(&self, s: &HashSet<PLTL>) -> Self {
         match self {
             PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => self.clone(),
-            PLTL::Unary(unary_op, annotated) => Self::new_unary(unary_op.clone(), annotated.u_rewrite(s)),
+            PLTL::Unary(unary_op, annotated) => Self::new_unary(*unary_op, annotated.u_rewrite(s)),
             PLTL::Binary(BinaryOp::WeakUntil, box lhs, box rhs) => {
                 if s.contains(self) {
                     Self::Top
@@ -213,7 +213,6 @@ mod tests {
         let the_set = HashSet::from([parse("a S b").unwrap().1]);
 
         let ltl: PLTL = "(Y (a S b)) | (~Y (a S b)) | (Y (a ~S b)) | (a S b) | (a ~S b)".parse().unwrap();
-        println!("{}", ltl.latex());
         let weakened_ltl = ltl.rewrite_with_set(&the_set);
         assert_eq!(
             format!("{}", weakened_ltl.latex()),

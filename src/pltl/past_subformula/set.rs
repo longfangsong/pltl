@@ -27,7 +27,7 @@ impl Iterator for Iter<'_> {
                 self.current_psf_index += 1;
                 return Some(PastSubformula {
                     id: result,
-                    state: self.set.state.clone(),
+                    state: self.set.state,
                 });
             }
             self.current_psf_index += 1;

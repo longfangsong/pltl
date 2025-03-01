@@ -3,26 +3,28 @@ mod safety;
 mod stable;
 mod weakening_conditions;
 use guarantee::GuaranteeyStateGivenN;
+use crate::utils::powerset;
 use hoars::{
     AbstractLabelExpression, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
-    AcceptanceSignature, Body, Edge, Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
+    AcceptanceSignature, Edge, Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
 };
 use itertools::Itertools;
 use safety::SafetyStateGivenM;
 
 use crate::{
     pltl::{
-        utils::powerset, Annotated, PastSubformulaSet, PastSubformularSetContext, UnaryOp, PLTL,
+        Annotated, PastSubformulaSet, PastSubformularSetContext, UnaryOp, PLTL
     },
     utils::{BitSet, BitSet32},
 };
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, format},
+    fmt::{self},
 };
 
 #[derive(Debug, Clone)]
 pub struct Context<'a> {
+    after_function_cache: HashMap<&'a PLTL, Vec<(&'a HashSet<String>, PLTL)>>,
     psf_context: PastSubformularSetContext<'a>,
     c_sets: Vec<PastSubformulaSet>,
     c_rewrite_c_sets: Vec<Vec<PastSubformulaSet>>,
@@ -32,7 +34,7 @@ pub struct Context<'a> {
     // v_c_i: Vec<Vec<HashSet<PLTL>>>,
 }
 
-impl<'a> fmt::Display for Context<'a> {
+impl fmt::Display for Context<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.psf_context)?;
         for (i, c) in self.c_sets.iter().enumerate() {
@@ -119,6 +121,7 @@ impl<'a> Context<'a> {
             .dedup()
             .collect();
         Self {
+            after_function_cache: HashMap::new(),
             psf_context,
             c_sets,
             c_rewrite_c_sets,
@@ -204,11 +207,10 @@ impl DumpedAutomata {
     pub fn ap(&self) -> Vec<String> {
         self.transitions
             .values()
-            .map(|v| v.iter().map(|(event, _)| event))
-            .flatten()
+            .flat_map(|v| v.iter().map(|(event, _)| event))
             .max_by_key(|it| it.len())
             .unwrap_or(&HashSet::new())
-            .into_iter()
+            .iter()
             .sorted()
             .cloned()
             .collect()
@@ -258,7 +260,7 @@ impl DumpedAutomata {
                     .into_iter()
                     .enumerate()
                 {
-                    if g.len() > 0 && g.iter().all(|it| it == &PLTL::Top) {
+                    if !g.is_empty() && g.iter().all(|it| it == &PLTL::Top) {
                         inf_visit.insert(s_id);
                     }
                 }
@@ -268,7 +270,7 @@ impl DumpedAutomata {
                     .into_iter()
                     .enumerate()
                 {
-                    if g.len() > 0 && g.iter().all(|it| it == &PLTL::Bottom) {
+                    if !g.is_empty() && g.iter().all(|it| it == &PLTL::Bottom) {
                         safety_visit.insert(s_id);
                     }
                 }
@@ -292,7 +294,7 @@ impl DumpedAutomata {
             .map(|i| {
                 AcceptanceCondition::and(
                     &AcceptanceCondition::id_fin(i as u32 * 2),
-                    &AcceptanceCondition::id_inf(i as u32 * 2 + 1),
+                    AcceptanceCondition::id_inf(i as u32 * 2 + 1),
                 )
             })
             .reduce(|acc, elem| acc.or(elem))
@@ -357,7 +359,7 @@ impl DumpedAutomata {
                             };
                             result
                         })
-                        .filter(|it| it != "")
+                        .filter(|it| !it.is_empty())
                         .collect::<Vec<_>>()
                         .join(" ");
                     hoars::State::from_parts(
@@ -503,7 +505,7 @@ impl State {
                 let mut new_globally_states = Vec::with_capacity(ctx.c_sets.len());
                 for (u_id, u) in m_id.iter().enumerate() {
                     let current =
-                        &self.states[m_id as usize][n_id as usize].guarantee_state[u_id as usize];
+                        &self.states[m_id as usize][n_id as usize].guarantee_state[u_id];
                     let new_eventually_state = guarantee::transition(
                         ctx,
                         u,
@@ -516,7 +518,7 @@ impl State {
                 }
                 for (v_id, v) in n_id.iter().enumerate() {
                     let current =
-                        &self.states[m_id as usize][n_id as usize].safety_state[v_id as usize];
+                        &self.states[m_id as usize][n_id as usize].safety_state[v_id];
                     let new_globally_state = safety::transition(
                         ctx,
                         v,
@@ -570,128 +572,5 @@ impl State {
             result.insert(current_state.clone(), transition);
         }
         DumpedAutomata::new(self.clone(), result)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_context() {
-        let ltl: PLTL = "Ya S ~Ya".parse().unwrap();
-        let context = Context::new(&ltl);
-        dbg!(&context.c_sets[3]);
-        dbg!(&context.c_sets[0]);
-        dbg!(&context.c_rewrite_c_sets[3][0]);
-        println!("{}", context);
-    }
-
-    #[test]
-    fn final_test() {
-        let ltl = "p U q".parse::<PLTL>().unwrap().normal_form();
-        println!("{}", ltl);
-        let context = Context::new(&ltl);
-        println!("{}", context);
-        let state = State::new(&context);
-        println!("=====");
-        let letter = HashSet::from(["p".to_string(), "q".to_string()]);
-        let result = state.dump_automata(&context, &letter);
-        println!("dumped");
-        let init = result.state_id_map[&state];
-        println!("init: {}", init);
-        println!("{}", result);
-        println!("{:?}", result);
-    }
-
-    #[test]
-    fn final_test2() {
-        let ltl = "G p".parse::<PLTL>().unwrap().normal_form();
-        println!("{}", ltl);
-        let context = Context::new(&ltl);
-        println!("{}", context);
-        let state = State::new(&context);
-        println!("=====");
-        let letter = HashSet::from(["p".to_string()]);
-        let result = state.dump_automata(&context, &letter);
-        println!("dumped");
-        let init = result.state_id_map[&state];
-        println!("init: {}", init);
-        println!("{}", result);
-        println!("{:?}", result);
-
-        println!("{}", hoars::output::to_hoa(&result.dump_hoa("test")));
-    }
-
-    #[test]
-    fn final_test3() {
-        let ltl = "F p".parse::<PLTL>().unwrap().normal_form();
-        println!("{}", ltl);
-        let context = Context::new(&ltl);
-        println!("{}", context);
-        let state = State::new(&context);
-        println!("=====");
-        let letter = HashSet::from(["p".to_string()]);
-        let result = state.dump_automata(&context, &letter);
-        println!("dumped");
-        let init = result.state_id_map[&state];
-        println!("init: {}", init);
-        println!("{}", result);
-        println!("{:?}", result);
-    }
-
-    #[test]
-    fn final_test4() {
-        let ltl = "G p & F q".parse::<PLTL>().unwrap().normal_form();
-        println!("{}", ltl);
-        let context = Context::new(&ltl);
-        println!("{}", context);
-        let state = State::new(&context);
-        println!("=====");
-        let letter = HashSet::from(["p".to_string(), "q".to_string()]);
-        let result = state.dump_automata(&context, &letter);
-        println!("dumped");
-        let init = result.state_id_map[&state];
-        println!("init: {}", init);
-        println!("{}", result);
-        println!("{:?}", result);
-
-        println!("{}", hoars::output::to_hoa(&result.dump_hoa("test")));
-    }
-
-
-    #[test]
-    fn final_test5() {
-        let ltl = "G p | F q".parse::<PLTL>().unwrap().normal_form();
-        println!("{}", ltl);
-        let context = Context::new(&ltl);
-        println!("{}", context);
-        let state = State::new(&context);
-        println!("=====");
-        let letter = HashSet::from(["p".to_string(), "q".to_string()]);
-        let result = state.dump_automata(&context, &letter);
-        println!("dumped");
-        let init = result.state_id_map[&state];
-        println!("init: {}", init);
-        println!("{}", result);
-        println!("{:?}", result);
-    }
-
-    #[test]
-    fn final_test6() {
-        let ltl = "F p & F q".parse::<PLTL>().unwrap().normal_form();
-        println!("{}", ltl);
-        let context = Context::new(&ltl);
-        println!("{}", context);
-        let state = State::new(&context);
-        println!("=====");
-        let letter = HashSet::from(["p".to_string(), "q".to_string()]);
-        let result = state.dump_automata(&context, &letter);
-        println!("dumped");
-        let init = result.state_id_map[&state];
-        println!("init: {}", init);
-        println!("{}", result);
-        println!("{:?}", result);
-        println!("{}", hoars::output::to_hoa(&result.dump_hoa("F p & F q")));
     }
 }

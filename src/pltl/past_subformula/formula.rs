@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 
 use crate::{pltl::{annotated::Annotated, BinaryOp, UnaryOp, PLTL}, utils::{BitSet, BitSet32}};
 

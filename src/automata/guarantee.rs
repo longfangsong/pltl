@@ -14,7 +14,9 @@ pub fn transition(
     bed_next_state: &[Annotated],
     letter: &HashSet<String>,
 ) -> PLTL {
-    let result = if matches!(state, PLTL::Top) {
+    
+    // println!("{} ={:?}=> {}", state, letter, result);
+    if matches!(state, PLTL::Top) {
         let mut result = Vec::with_capacity(ctx.c_sets.len());
         for (c, bed_state) in ctx.c_sets.iter().zip(bed_next_state.iter()) {
             let u_item = ctx.u_type_subformulas[u_item_id as usize];
@@ -39,9 +41,7 @@ pub fn transition(
         disjunction(result.into_iter()).simplify()
     } else {
         after_function(state, letter).simplify()
-    };
-    // println!("{} ={:?}=> {}", state, letter, result);
-    result
+    }
 }
 
 // Inf(state)
