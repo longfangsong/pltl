@@ -156,8 +156,8 @@ impl PLTL {
             PLTL::Unary(unary_op, annotated) => Self::new_unary(*unary_op, annotated.v_rewrite(s)),
             PLTL::Binary(BinaryOp::Until, box lhs, box rhs) => {
                 if s.contains(self) {
-                    let rewritten_lhs = lhs.v_rewrite( s);
-                    let rewritten_rhs = rhs.v_rewrite( s);
+                    let rewritten_lhs = lhs.v_rewrite(s);
+                    let rewritten_rhs = rhs.v_rewrite(s);
                     Self::new_binary(BinaryOp::WeakUntil, rewritten_lhs, rewritten_rhs)
                 } else {
                     Self::Bottom
@@ -172,8 +172,9 @@ impl PLTL {
                     Self::Bottom
                 }
             }
-            PLTL::Binary(binary_op, box lhs, box rhs) => 
-                Self::new_binary(*binary_op, lhs.v_rewrite(s), rhs.v_rewrite(s)),
+            PLTL::Binary(binary_op, box lhs, box rhs) => {
+                Self::new_binary(*binary_op, lhs.v_rewrite(s), rhs.v_rewrite(s))
+            }
         }
     }
 
@@ -197,8 +198,9 @@ impl PLTL {
                     Self::new_binary(BinaryOp::MightyRelease, lhs.u_rewrite(s), rhs.u_rewrite(s))
                 }
             }
-            PLTL::Binary(binary_op, box lhs, box rhs) => 
-                Self::new_binary(*binary_op, lhs.u_rewrite(s), rhs.u_rewrite(s)),
+            PLTL::Binary(binary_op, box lhs, box rhs) => {
+                Self::new_binary(*binary_op, lhs.u_rewrite(s), rhs.u_rewrite(s))
+            }
         }
     }
 }
@@ -206,16 +208,20 @@ impl PLTL {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pltl::parse;
+    use crate::pltl::PLTL;
 
     #[test]
     fn test_rewrite_with_set() {
-        let the_set = HashSet::from([parse("a S b").unwrap().1]);
+        let (ltl, mut atom_map) = PLTL::from_string("a S b");
+        let the_set = HashSet::from([ltl]);
 
-        let ltl: PLTL = "(Y (a S b)) | (~Y (a S b)) | (Y (a ~S b)) | (a S b) | (a ~S b)".parse().unwrap();
+        let ltl = PLTL::from_string_increment(
+            "(Y (a S b)) | (~Y (a S b)) | (Y (a ~S b)) | (a S b) | (a ~S b)",
+            &mut atom_map,
+        );
         let weakened_ltl = ltl.rewrite_with_set(&the_set);
         assert_eq!(
-            format!("{}", weakened_ltl.latex()),
+            format!("{}", weakened_ltl.latex(&atom_map)),
             "Y(a \\widetilde{S} b) ∨ Y(a \\widetilde{S} b) ∨ Y(a S b) ∨ (a \\widetilde{S} b) ∨ (a S b)"
         );
     }

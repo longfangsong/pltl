@@ -9,10 +9,12 @@ pub mod utils;
 use std::fmt;
 
 pub use annotated::Annotated;
-pub use parse::parse;
+use parse::{parse, PLTLParseTree};
 pub use past_subformula::{PastSubformulaSet, PastSubformularSetContext};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+use crate::utils::BiMap;
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
@@ -160,52 +162,96 @@ impl fmt::Display for BinaryOp {
 pub enum PLTL {
     Top,
     Bottom,
-    Atom(String),
+    Atom(u32),
     Unary(UnaryOp, Box<PLTL>),
     Binary(BinaryOp, Box<PLTL>, Box<PLTL>),
 }
 
 impl PLTL {
-    pub fn new_atom(s: impl ToString) -> PLTL {
-        PLTL::Atom(s.to_string())
+    fn from_parse_tree(pltl: PLTLParseTree, atom_map: &mut BiMap<String, u32>) -> Self {
+        match pltl {
+            PLTLParseTree::Top => PLTL::Top,
+            PLTLParseTree::Bottom => PLTL::Bottom,
+            PLTLParseTree::Atom(s) => {
+                if let Some(i) = atom_map.get_by_left(&s) {
+                    PLTL::Atom(*i)
+                } else {
+                    atom_map.insert(s, atom_map.len() as u32);
+                    PLTL::Atom(atom_map.len() as u32 - 1)
+                }
+            }
+            PLTLParseTree::Unary(op, box content) => {
+                PLTL::Unary(op, Box::new(Self::from_parse_tree(content, atom_map)))
+            }
+            PLTLParseTree::Binary(op, box lhs, box rhs) => PLTL::Binary(
+                op,
+                Box::new(Self::from_parse_tree(lhs, atom_map)),
+                Box::new(Self::from_parse_tree(rhs, atom_map)),
+            ),
+        }
     }
 
-    pub fn new_unary(op: UnaryOp, r: PLTL) -> PLTL {
-        PLTL::Unary(op, Box::new(r))
+    pub fn from_string(s: &str) -> (Self, BiMap<String, u32>) {
+        let mut atom_map = BiMap::default();
+        let pltl = Self::from_parse_tree(parse(s).unwrap().1, &mut atom_map);
+        (pltl, atom_map)
     }
 
-    pub fn new_binary(op: BinaryOp, l: PLTL, r: PLTL) -> PLTL {
-        PLTL::Binary(op, Box::new(l), Box::new(r))
+    #[cfg(test)]
+    pub fn from_string_increment(s: &str, atom_map: &mut BiMap<String, u32>) -> Self {
+        Self::from_parse_tree(parse(s).unwrap().1, atom_map)
     }
 
-    pub fn latex(&self) -> String {
+    pub fn new_atom(s: u32) -> Self {
+        Self::Atom(s)
+    }
+
+    pub fn atom_with_name(s: &str, atom_map: &BiMap<String, u32>) -> Self {
+        if let Some(i) = atom_map.get_by_left(s) {
+            Self::Atom(*i)
+        } else {
+            panic!("Atom {} not found in atom map", s);
+        }
+    }
+
+    pub fn new_unary(op: UnaryOp, r: Self) -> Self {
+        Self::Unary(op, Box::new(r))
+    }
+
+    pub fn new_binary(op: BinaryOp, l: Self, r: Self) -> Self {
+        Self::Binary(op, Box::new(l), Box::new(r))
+    }
+}
+
+impl PLTL {
+    pub fn latex(&self, atom_map: &BiMap<String, u32>) -> String {
         match self {
             PLTL::Top => "⊤".to_string(),
             PLTL::Bottom => "⊥".to_string(),
-            PLTL::Atom(s) => s.clone(),
+            PLTL::Atom(s) => atom_map.get_by_right(s).unwrap().to_string(),
             PLTL::Unary(UnaryOp::Not, box content @ PLTL::Unary(UnaryOp::Not, _)) => {
-                format!("{}{}", UnaryOp::Not.latex(), content.latex())
+                format!("{}{}", UnaryOp::Not.latex(), content.latex(atom_map))
             }
             PLTL::Unary(op, box content @ PLTL::Binary(_, _, _)) => {
-                format!("{}({})", op.latex(), content.latex())
+                format!("{}({})", op.latex(), content.latex(atom_map))
             }
-            PLTL::Unary(op, box content) => format!("{}{}", op.latex(), content.latex()),
+            PLTL::Unary(op, box content) => format!("{}{}", op.latex(), content.latex(atom_map)),
             PLTL::Binary(op, box lhs, box rhs) => {
                 let lhs = match (op, lhs) {
-                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => lhs.latex(),
-                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => lhs.latex(),
+                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => lhs.latex(atom_map),
+                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => lhs.latex(atom_map),
                     (_, PLTL::Binary(_, _, _)) => {
-                        format!("({})", lhs.latex())
+                        format!("({})", lhs.latex(atom_map))
                     }
-                    _ => lhs.latex(),
+                    _ => lhs.latex(atom_map),
                 };
                 let rhs = match (op, rhs) {
-                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => rhs.latex(),
-                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => rhs.latex(),
+                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => rhs.latex(atom_map),
+                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => rhs.latex(atom_map),
                     (_, PLTL::Binary(_, _, _)) => {
-                        format!("({})", rhs.latex())
+                        format!("({})", rhs.latex(atom_map))
                     }
-                    _ => rhs.latex(),
+                    _ => rhs.latex(atom_map),
                 };
                 format!("{} {} {}", lhs, op.latex(), rhs)
             }
@@ -238,7 +284,7 @@ impl fmt::Display for PLTL {
         match self {
             PLTL::Top => write!(f, "⊤"),
             PLTL::Bottom => write!(f, "⊥"),
-            PLTL::Atom(s) => write!(f, "{}", s),
+            PLTL::Atom(s) => write!(f, "\"{}\"", s),
             PLTL::Unary(UnaryOp::Not, box content @ PLTL::Unary(UnaryOp::Not, _)) => {
                 write!(f, "{}{}", UnaryOp::Not, content)
             }
@@ -269,84 +315,225 @@ impl fmt::Display for PLTL {
     }
 }
 
+impl PLTL {
+    pub fn format_with_atom_names(&self, atom_map: &BiMap<String, u32>) -> String {
+        match self {
+            PLTL::Top => "⊤".to_string(),
+            PLTL::Bottom => "⊥".to_string(),
+            PLTL::Atom(s) => atom_map.get_by_right(s).unwrap().to_string(),
+            PLTL::Unary(UnaryOp::Not, box content @ PLTL::Unary(UnaryOp::Not, _)) => {
+                format!(
+                    "{}{}",
+                    UnaryOp::Not,
+                    content.format_with_atom_names(atom_map)
+                )
+            }
+            PLTL::Unary(op, box content @ PLTL::Binary(_, _, _)) => {
+                format!("{}({})", op, content.format_with_atom_names(atom_map))
+            }
+            PLTL::Unary(op, box content) => {
+                format!("{}{}", op, content.format_with_atom_names(atom_map))
+            }
+            PLTL::Binary(op, box lhs, box rhs) => {
+                let lhs = match (op, lhs) {
+                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => {
+                        lhs.format_with_atom_names(atom_map).to_string()
+                    }
+                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => {
+                        lhs.format_with_atom_names(atom_map).to_string()
+                    }
+                    (_, PLTL::Binary(_, _, _)) => {
+                        format!("({})", lhs.format_with_atom_names(atom_map))
+                    }
+                    _ => lhs.format_with_atom_names(atom_map).to_string(),
+                };
+                let rhs = match (op, rhs) {
+                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => {
+                        rhs.format_with_atom_names(atom_map).to_string()
+                    }
+                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => {
+                        rhs.format_with_atom_names(atom_map).to_string()
+                    }
+                    (_, PLTL::Binary(_, _, _)) => {
+                        format!("({})", rhs.format_with_atom_names(atom_map))
+                    }
+                    _ => rhs.format_with_atom_names(atom_map).to_string(),
+                };
+                format!("{} {} {}", lhs, op, rhs)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{
+        pltl::{parse::PLTLParseTree, BinaryOp, UnaryOp, PLTL},
+        utils::BiMap,
+    };
+
     #[test]
     fn test_latex() {
-        let ltl = PLTL::new_binary(
-            BinaryOp::Until,
-            PLTL::new_atom("a"),
-            PLTL::new_unary(UnaryOp::Not, PLTL::new_atom("b")),
-        );
-        assert_eq!(ltl.latex(), "a U ¬b");
-
-        let ltl = PLTL::new_binary(
-            BinaryOp::Until,
-            PLTL::new_binary(BinaryOp::Until, PLTL::new_atom("a"), PLTL::new_atom("b")),
-            PLTL::new_atom("c"),
-        );
-        assert_eq!(ltl.latex(), "(a U b) U c");
-
-        let ltl = PLTL::new_binary(
-            BinaryOp::And,
-            PLTL::new_binary(BinaryOp::And, PLTL::new_atom("a"), PLTL::new_atom("b")),
-            PLTL::new_binary(BinaryOp::And, PLTL::new_atom("c"), PLTL::new_atom("d")),
-        );
-        assert_eq!(ltl.latex(), "a ∧ b ∧ c ∧ d");
-
-        let ltl = PLTL::new_binary(
-            BinaryOp::And,
-            PLTL::new_binary(BinaryOp::Or, PLTL::new_atom("a"), PLTL::new_atom("b")),
-            PLTL::new_binary(BinaryOp::And, PLTL::new_atom("c"), PLTL::new_atom("d")),
-        );
-        assert_eq!(ltl.latex(), "(a ∨ b) ∧ c ∧ d");
-
-        let ltl = PLTL::new_binary(
-            BinaryOp::And,
-            PLTL::new_binary(BinaryOp::Or, PLTL::new_atom("a"), PLTL::new_atom("b")),
-            PLTL::new_unary(
-                UnaryOp::Not,
-                PLTL::new_binary(BinaryOp::And, PLTL::new_atom("c"), PLTL::new_atom("d")),
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::Until,
+                PLTLParseTree::new_atom("a"),
+                PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("b")),
             ),
+            &mut atom_map,
         );
-        assert_eq!(ltl.latex(), "(a ∨ b) ∧ ¬(c ∧ d)");
+        assert_eq!(ltl.latex(&atom_map), "a U ¬b");
 
-        let ltl = PLTL::new_binary(
-            BinaryOp::And,
-            PLTL::new_unary(
-                UnaryOp::Next,
-                PLTL::new_binary(BinaryOp::Or, PLTL::new_atom("a"), PLTL::new_atom("b")),
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::Until,
+                PLTLParseTree::new_binary(
+                    BinaryOp::Until,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_atom("b"),
+                ),
+                PLTLParseTree::new_atom("c"),
             ),
-            PLTL::new_unary(
-                UnaryOp::Yesterday,
-                PLTL::new_unary(
-                    UnaryOp::Not,
-                    PLTL::new_binary(BinaryOp::And, PLTL::new_atom("c"), PLTL::new_atom("d")),
+            &mut atom_map,
+        );
+        assert_eq!(ltl.latex(&atom_map), "(a U b) U c");
+
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::And,
+                PLTLParseTree::new_binary(
+                    BinaryOp::And,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_atom("b"),
+                ),
+                PLTLParseTree::new_binary(
+                    BinaryOp::And,
+                    PLTLParseTree::new_atom("c"),
+                    PLTLParseTree::new_atom("d"),
                 ),
             ),
+            &mut atom_map,
         );
-        assert_eq!(ltl.latex(), "X(a ∨ b) ∧ Y¬(c ∧ d)");
+        assert_eq!(ltl.latex(&atom_map), "a ∧ b ∧ c ∧ d");
 
-        let ltl = PLTL::new_unary(UnaryOp::Not, PLTL::new_unary(UnaryOp::Not, PLTL::Top));
-        assert_eq!(ltl.latex(), "¬¬⊤");
-
-        let ltl = PLTL::new_binary(
-            BinaryOp::Or,
-            PLTL::new_binary(BinaryOp::And, PLTL::Bottom, PLTL::new_atom("a")),
-            PLTL::new_atom("b"),
-        );
-        assert_eq!(ltl.latex(), "(⊥ ∧ a) ∨ b");
-
-        let ltl = PLTL::new_binary(
-            BinaryOp::Or,
-            PLTL::new_binary(BinaryOp::Or, PLTL::Bottom, PLTL::new_atom("a")),
-            PLTL::new_binary(
-                BinaryOp::Or,
-                PLTL::new_unary(UnaryOp::Next, PLTL::new_atom("b")),
-                PLTL::new_binary(BinaryOp::Since, PLTL::Bottom, PLTL::new_atom("a")),
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::And,
+                PLTLParseTree::new_binary(
+                    BinaryOp::Or,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_atom("b"),
+                ),
+                PLTLParseTree::new_binary(
+                    BinaryOp::And,
+                    PLTLParseTree::new_atom("c"),
+                    PLTLParseTree::new_atom("d"),
+                ),
             ),
+            &mut atom_map,
         );
-        assert_eq!(ltl.latex(), "⊥ ∨ a ∨ Xb ∨ (⊥ S a)");
+        assert_eq!(ltl.latex(&atom_map), "(a ∨ b) ∧ c ∧ d");
+
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::And,
+                PLTLParseTree::new_binary(
+                    BinaryOp::Or,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_atom("b"),
+                ),
+                PLTLParseTree::new_unary(
+                    UnaryOp::Not,
+                    PLTLParseTree::new_binary(
+                        BinaryOp::And,
+                        PLTLParseTree::new_atom("c"),
+                        PLTLParseTree::new_atom("d"),
+                    ),
+                ),
+            ),
+            &mut atom_map,
+        );
+        assert_eq!(ltl.latex(&atom_map), "(a ∨ b) ∧ ¬(c ∧ d)");
+
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::And,
+                PLTLParseTree::new_unary(
+                    UnaryOp::Next,
+                    PLTLParseTree::new_binary(
+                        BinaryOp::Or,
+                        PLTLParseTree::new_atom("a"),
+                        PLTLParseTree::new_atom("b"),
+                    ),
+                ),
+                PLTLParseTree::new_unary(
+                    UnaryOp::Yesterday,
+                    PLTLParseTree::new_unary(
+                        UnaryOp::Not,
+                        PLTLParseTree::new_binary(
+                            BinaryOp::And,
+                            PLTLParseTree::new_atom("c"),
+                            PLTLParseTree::new_atom("d"),
+                        ),
+                    ),
+                ),
+            ),
+            &mut atom_map,
+        );
+        assert_eq!(ltl.latex(&atom_map), "X(a ∨ b) ∧ Y¬(c ∧ d)");
+
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_unary(
+                UnaryOp::Not,
+                PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::Top),
+            ),
+            &mut atom_map,
+        );
+        assert_eq!(ltl.latex(&atom_map), "¬¬⊤");
+
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::Or,
+                PLTLParseTree::new_binary(
+                    BinaryOp::And,
+                    PLTLParseTree::Bottom,
+                    PLTLParseTree::new_atom("a"),
+                ),
+                PLTLParseTree::new_atom("b"),
+            ),
+            &mut atom_map,
+        );
+        assert_eq!(ltl.latex(&atom_map), "(⊥ ∧ a) ∨ b");
+
+        let mut atom_map = BiMap::default();
+        let ltl = PLTL::from_parse_tree(
+            PLTLParseTree::new_binary(
+                BinaryOp::Or,
+                PLTLParseTree::new_binary(
+                    BinaryOp::Or,
+                    PLTLParseTree::Bottom,
+                    PLTLParseTree::new_atom("a"),
+                ),
+                PLTLParseTree::new_binary(
+                    BinaryOp::Or,
+                    PLTLParseTree::new_unary(UnaryOp::Next, PLTLParseTree::new_atom("b")),
+                    PLTLParseTree::new_binary(
+                        BinaryOp::Since,
+                        PLTLParseTree::Bottom,
+                        PLTLParseTree::new_atom("a"),
+                    ),
+                ),
+            ),
+            &mut atom_map,
+        );
+        assert_eq!(ltl.latex(&atom_map), "⊥ ∨ a ∨ Xb ∨ (⊥ S a)");
     }
 }

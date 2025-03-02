@@ -395,7 +395,7 @@ impl PLTL {
                     true,
                 )
             }
-            
+
             PLTL::Binary(BinaryOp::Until, _, box PLTL::Top) => (PLTL::Top, false),
             PLTL::Binary(BinaryOp::Until, box PLTL::Bottom, box rhs) => (rhs.clone(), true),
             PLTL::Binary(BinaryOp::Until, _, box PLTL::Bottom) => (PLTL::Bottom, false),
@@ -405,16 +405,20 @@ impl PLTL {
             PLTL::Binary(BinaryOp::Release, _, box PLTL::Top) => (PLTL::Top, false),
             PLTL::Binary(BinaryOp::Release, _, box PLTL::Bottom) => (PLTL::Bottom, false),
             PLTL::Binary(BinaryOp::Release, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
-            
+
             PLTL::Binary(BinaryOp::WeakUntil, box PLTL::Top, _) => (PLTL::Top, false),
             PLTL::Binary(BinaryOp::WeakUntil, box PLTL::Bottom, box rhs) => (rhs.clone(), true),
             PLTL::Binary(BinaryOp::WeakUntil, _, box PLTL::Top) => (PLTL::Top, false),
-            PLTL::Binary(BinaryOp::WeakUntil, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
-            
+            PLTL::Binary(BinaryOp::WeakUntil, box lhs, box rhs) if lhs == rhs => {
+                (lhs.clone(), true)
+            }
+
             PLTL::Binary(BinaryOp::MightyRelease, box PLTL::Bottom, _) => (PLTL::Bottom, false),
             PLTL::Binary(BinaryOp::MightyRelease, _, box PLTL::Bottom) => (PLTL::Bottom, false),
             PLTL::Binary(BinaryOp::MightyRelease, box PLTL::Top, box rhs) => (rhs.clone(), true),
-            PLTL::Binary(BinaryOp::MightyRelease, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
+            PLTL::Binary(BinaryOp::MightyRelease, box lhs, box rhs) if lhs == rhs => {
+                (lhs.clone(), true)
+            }
 
             PLTL::Binary(
                 op @ (BinaryOp::Release | BinaryOp::Until),
@@ -427,7 +431,11 @@ impl PLTL {
             }
             PLTL::Binary(
                 op @ (BinaryOp::MightyRelease | BinaryOp::WeakUntil),
-                box PLTL::Binary(op2 @ (BinaryOp::MightyRelease |BinaryOp::WeakUntil), box llhs, box lrhs),
+                box PLTL::Binary(
+                    op2 @ (BinaryOp::MightyRelease | BinaryOp::WeakUntil),
+                    box llhs,
+                    box lrhs,
+                ),
                 box rhs,
             ) if op == op2 && lrhs == rhs => {
                 let (llhs, _) = llhs.simplify_until_simplest();
@@ -464,4 +472,3 @@ impl PLTL {
             .simplify()
     }
 }
-

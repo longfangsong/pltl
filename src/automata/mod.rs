@@ -2,15 +2,15 @@ mod guarantee;
 mod safety;
 mod stable;
 mod weakening_conditions;
+
 use guarantee::GuaranteeyStateGivenN;
-use crate::utils::powerset;
+use crate::utils::{powerset, BiMap};
 use hoars::{
     AbstractLabelExpression, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
     AcceptanceSignature, Edge, Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
 };
 use itertools::Itertools;
 use safety::SafetyStateGivenM;
-
 use crate::{
     pltl::{
         Annotated, PastSubformulaSet, PastSubformularSetContext, UnaryOp, PLTL
@@ -24,6 +24,7 @@ use std::{
 
 #[derive(Debug, Clone)]
 pub struct Context<'a> {
+    pub atom_map: BiMap<String, u32>,
     after_function_cache: HashMap<&'a PLTL, Vec<(&'a HashSet<String>, PLTL)>>,
     psf_context: PastSubformularSetContext<'a>,
     c_sets: Vec<PastSubformulaSet>,
@@ -31,7 +32,6 @@ pub struct Context<'a> {
     init_c: usize,
     u_type_subformulas: Vec<&'a PLTL>,
     v_type_subformulas: Vec<&'a PLTL>,
-    // v_c_i: Vec<Vec<HashSet<PLTL>>>,
 }
 
 impl fmt::Display for Context<'_> {
@@ -77,7 +77,7 @@ impl fmt::Display for Context<'_> {
 }
 
 impl<'a> Context<'a> {
-    pub fn new(ltl: &'a PLTL) -> Self {
+    pub fn new(ltl: &'a PLTL, atom_map: BiMap<String, u32>) -> Self {
         let psf_context = PastSubformularSetContext::new(ltl);
         let mut c_sets = Vec::with_capacity(1 << psf_context.past_subformulas.len());
         let mut c = PastSubformulaSet {
@@ -121,6 +121,7 @@ impl<'a> Context<'a> {
             .dedup()
             .collect();
         Self {
+            atom_map,
             after_function_cache: HashMap::new(),
             psf_context,
             c_sets,
@@ -184,14 +185,16 @@ pub struct State {
 
 pub struct DumpedAutomata {
     init_state: State,
-    transitions: HashMap<State, Vec<(HashSet<String>, State)>>,
+    atom_map: BiMap<String, u32>,
+    transitions: HashMap<State, Vec<(HashSet<u32>, State)>>,
     state_id_map: HashMap<State, usize>,
 }
 
 impl DumpedAutomata {
     pub fn new(
         init_state: State,
-        transitions: HashMap<State, Vec<(HashSet<String>, State)>>,
+        atom_map: BiMap<String, u32>,
+        transitions: HashMap<State, Vec<(HashSet<u32>, State)>>,
     ) -> Self {
         let mut state_id_map = HashMap::new();
         transitions.keys().enumerate().for_each(|(i, state)| {
@@ -199,12 +202,13 @@ impl DumpedAutomata {
         });
         Self {
             init_state,
+            atom_map,
             transitions,
             state_id_map,
         }
     }
 
-    pub fn ap(&self) -> Vec<String> {
+    pub fn ap(&self, atom_map: &BiMap<String, u32>) -> Vec<u32> {
         self.transitions
             .values()
             .flat_map(|v| v.iter().map(|(event, _)| event))
@@ -299,7 +303,7 @@ impl DumpedAutomata {
             })
             .reduce(|acc, elem| acc.or(elem))
             .unwrap();
-        let ap = self.ap();
+        let ap = self.ap(&self.atom_map);
         let result = HoaAutomaton::from_parts(
             Header::from_vec(vec![
                 HeaderItem::v1(),
@@ -315,7 +319,7 @@ impl DumpedAutomata {
                     Property::Complete,
                     Property::StateAcceptance,
                 ]),
-                HeaderItem::AP(ap.clone()),
+                HeaderItem::AP(ap.iter().map(|id| self.atom_map.get_by_right(id).unwrap().clone()).collect()),
             ]),
             self.state_id_map
                 .iter()
@@ -387,7 +391,7 @@ impl fmt::Display for DumpedAutomata {
                 writeln!(
                     f,
                     "{{{}}} {}",
-                    letter.iter().cloned().collect::<Vec<_>>().join(","),
+                    letter.iter().map(|id| self.atom_map.get_by_right(id).unwrap().clone()).collect::<Vec<_>>().join(","),
                     self.state_id_map[next_state]
                 )?;
             }
@@ -490,7 +494,7 @@ impl State {
         }
     }
 
-    pub fn transition(&self, ctx: &Context, letter: &HashSet<String>) -> State {
+    pub fn transition(&self, ctx: &Context, letter: &HashSet<u32>) -> State {
         let next_weakening_condition = weakening_conditions::rewrite_condition_function(
             ctx,
             &self.weakening_condition,
@@ -552,7 +556,7 @@ impl State {
         }
     }
 
-    pub fn dump_automata(&self, ctx: &Context, all_letters: &HashSet<String>) -> DumpedAutomata {
+    pub fn dump_automata(&self, ctx: &Context, all_letters: &HashSet<u32>) -> DumpedAutomata {
         let mut result = HashMap::new();
         let mut pending_states: Vec<_> = Vec::new();
         pending_states.push(self.clone());
@@ -571,6 +575,6 @@ impl State {
                 .collect();
             result.insert(current_state.clone(), transition);
         }
-        DumpedAutomata::new(self.clone(), result)
+        DumpedAutomata::new(self.clone(), ctx.atom_map.clone(), result)
     }
 }

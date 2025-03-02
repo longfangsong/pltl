@@ -1,7 +1,10 @@
-use std::ops::RangeInclusive;
-use std::collections::HashSet;
-
+use bimap::BiHashMap;
+use fxhash::FxBuildHasher;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::collections::HashSet;
+use std::ops::RangeInclusive;
+
+pub type BiMap<L, R> = BiHashMap<L, R, FxBuildHasher, FxBuildHasher>;
 
 pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
     type Iter<'a>: Iterator<Item = u32>
@@ -149,15 +152,14 @@ mod tests {
     #[test]
     fn test_powerset() {
         let set = HashSet::from(["a", "b"]);
-        let mut expected = vec![
-            HashSet::new(),
+        let expected = [HashSet::new(),
             HashSet::from(["a"]),
             HashSet::from(["b"]),
-            HashSet::from(["a", "b"]),
-        ];
-        expected.sort_by_key(|set| set.iter().cloned().collect::<Vec<_>>());
-        let mut powerset = powerset(&set);
-        powerset.sort_by_key(|set| set.iter().cloned().collect::<Vec<_>>());
-        assert_eq!(powerset, expected);
+            HashSet::from(["a", "b"])];
+        let powerset = powerset(&set);
+        assert_eq!(powerset.len(), expected.len());
+        for set in powerset {
+            assert!(expected.contains(&set));
+        }
     }
 }

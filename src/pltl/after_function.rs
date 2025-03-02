@@ -1,15 +1,15 @@
 use std::collections::HashSet;
 
-use crate::utils::powerset;
-use crate::utils::BitSet;
 use super::{
     annotated::Annotated,
     past_subformula::{PastSubformulaSet, PastSubformularSetContext},
     utils::{conjunction, disjunction},
     BinaryOp, UnaryOp, PLTL,
 };
+use crate::utils::powerset;
+use crate::utils::BitSet;
 
-fn local_post_update(f: &PLTL, letter: &HashSet<String>, past_st: &HashSet<PLTL>) -> PLTL {
+fn local_post_update(f: &PLTL, letter: &HashSet<u32>, past_st: &HashSet<PLTL>) -> PLTL {
     let first_part = f.rewrite_with_set(past_st);
     let psf_set: HashSet<PLTL> = f.past_subformulas().into_iter().cloned().collect();
     let intersection: Vec<_> = psf_set
@@ -27,7 +27,7 @@ fn local_post_update(f: &PLTL, letter: &HashSet<String>, past_st: &HashSet<PLTL>
 fn local_post_update_annotated(
     ctx: &PastSubformularSetContext,
     f: &Annotated,
-    letter: &HashSet<String>,
+    letter: &HashSet<u32>,
     past_st: &PastSubformulaSet,
 ) -> Annotated {
     let mut result = f.rewrite_with_set(ctx, past_st);
@@ -47,7 +47,7 @@ fn local_post_update_annotated(
 pub fn local_after_annotated(
     ctx: &PastSubformularSetContext,
     f: &Annotated,
-    letter: &HashSet<String>,
+    letter: &HashSet<u32>,
     past_st: &PastSubformulaSet,
 ) -> Annotated {
     match f {
@@ -78,14 +78,14 @@ pub fn local_after_annotated(
             let psf_shape = ctx.past_subformulas[past_subformula.id as usize];
             let weaken = past_subformula.state.get(past_subformula.id);
             match (psf_shape, weaken) {
-                (super::PLTL::Unary(UnaryOp::Yesterday | UnaryOp::WeakYesterday, _), true) => {
+                (PLTL::Unary(UnaryOp::Yesterday | UnaryOp::WeakYesterday, _), true) => {
                     Annotated::Top
                 }
-                (super::PLTL::Unary(UnaryOp::Yesterday | UnaryOp::WeakYesterday, _), false) => {
+                (PLTL::Unary(UnaryOp::Yesterday | UnaryOp::WeakYesterday, _), false) => {
                     Annotated::Bottom
                 }
                 (
-                    super::PLTL::Binary(
+                    PLTL::Binary(
                         BinaryOp::Before
                         | BinaryOp::WeakBefore
                         | BinaryOp::Since
@@ -145,8 +145,7 @@ pub fn local_after_annotated(
     .simplify()
 }
 
-pub fn local_after(f: &PLTL, letter: &HashSet<String>, past_st: &HashSet<PLTL>) -> PLTL {
-    
+pub fn local_after(f: &PLTL, letter: &HashSet<u32>, past_st: &HashSet<PLTL>) -> PLTL {
     match f {
         PLTL::Top => PLTL::Top,
         PLTL::Bottom => PLTL::Bottom,
@@ -204,10 +203,9 @@ pub fn local_after(f: &PLTL, letter: &HashSet<String>, past_st: &HashSet<PLTL>) 
     }
 }
 
-pub fn after_function(f: &PLTL, letter: &HashSet<String>) -> PLTL {
+pub fn after_function(f: &PLTL, letter: &HashSet<u32>) -> PLTL {
     let psf_set: HashSet<PLTL> = f.past_subformulas().into_iter().cloned().collect();
     let powerset = powerset(&psf_set);
     let result = disjunction(powerset.iter().map(|set| local_after(f, letter, set))).simplify();
     result
 }
-

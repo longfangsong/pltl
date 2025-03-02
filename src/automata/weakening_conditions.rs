@@ -19,7 +19,7 @@ fn is_saturated(ctx: &Context, i: usize, j: usize) -> bool {
 pub fn rewrite_condition_function(
     ctx: &Context,
     current: &[Annotated],
-    letter: &HashSet<String>,
+    letter: &HashSet<u32>,
 ) -> Vec<Annotated> {
     let k = ctx.c_sets.len();
     let mut result = Vec::with_capacity(current.len());
@@ -56,29 +56,4 @@ pub fn rewrite_condition_function(
         result.push(current_result_i.unwrap().simplify());
     }
     result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pltl::PLTL;
-
-    #[test]
-    fn test_rewrite_condition_function() {
-        let pltl: PLTL = "Y (p ~S q)".parse().unwrap();
-        let context = Context::new(&pltl);
-        println!("{}", context);
-        let current: Vec<Annotated> = (0..context.c_sets.len()).map(|i| if i == context.init_c {
-            Annotated::Top
-        } else {
-            Annotated::Bottom
-        }).collect();
-        let letter = HashSet::new();
-        let result = rewrite_condition_function(&context, &current, &letter);
-        println!("{}", result.iter().map(|it| format!("{}", it.to_pltl(&context.psf_context))).collect::<Vec<_>>().join(","));
-
-        let letter = HashSet::from(["p".to_string()]);
-        let result = rewrite_condition_function(&context, &current, &letter);
-        println!("{}", result.iter().map(|it| format!("{}", it.to_pltl(&context.psf_context))).collect::<Vec<_>>().join(","));
-    }
 }

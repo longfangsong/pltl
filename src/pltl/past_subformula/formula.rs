@@ -1,5 +1,7 @@
-
-use crate::{pltl::{annotated::Annotated, BinaryOp, UnaryOp, PLTL}, utils::{BitSet, BitSet32}};
+use crate::{
+    pltl::{annotated::Annotated, BinaryOp, UnaryOp, PLTL},
+    utils::{BitSet, BitSet32},
+};
 
 use super::{context::PastSubformularSetContext, set::PastSubformulaSet};
 
@@ -75,9 +77,9 @@ impl PastSubformula {
                 //         state: self.state,
                 //     })
                 // } else {
-                    Annotated::from_pltl(content, ctx)
+                Annotated::from_pltl(content, ctx)
                 // }
-            },
+            }
             (PLTL::Binary(BinaryOp::Since | BinaryOp::WeakSince, _, box rhs), false) => {
                 // if rhs.is_temporal() {
                 //     Annotated::PastSubformula(PastSubformula {
@@ -87,24 +89,20 @@ impl PastSubformula {
                 // } else {
                 Annotated::from_pltl(rhs, ctx)
                 // }
-            },
+            }
             (PLTL::Binary(BinaryOp::Since | BinaryOp::WeakSince, box lhs, box rhs), true) => {
-                let new_rhs = 
-                    Annotated::from_pltl(rhs, ctx);
-                let new_lhs =
-                    Annotated::from_pltl(lhs, ctx);
+                let new_rhs = Annotated::from_pltl(rhs, ctx);
+                let new_lhs = Annotated::from_pltl(lhs, ctx);
                 Annotated::Binary(BinaryOp::Or, Box::new(new_lhs), Box::new(new_rhs))
             }
             (PLTL::Binary(BinaryOp::Before | BinaryOp::WeakBefore, box lhs, box rhs), false) => {
-                let new_rhs = 
-                    Annotated::from_pltl(rhs, ctx);
-                let new_lhs = 
-                    Annotated::from_pltl(lhs, ctx);
+                let new_rhs = Annotated::from_pltl(rhs, ctx);
+                let new_lhs = Annotated::from_pltl(lhs, ctx);
                 Annotated::Binary(BinaryOp::And, Box::new(new_lhs), Box::new(new_rhs))
-            },
+            }
             (PLTL::Binary(BinaryOp::Before | BinaryOp::WeakBefore, _, box rhs), true) => {
-                    Annotated::from_pltl(rhs, ctx)
-            },
+                Annotated::from_pltl(rhs, ctx)
+            }
             _ => unreachable!("Must be past formula"),
         }
     }
@@ -118,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_rewrite() {
-        let ltl: PLTL = "((Y a) S (~Y a)) B ((Y a) ~S (Y a))".parse().unwrap();
+        let (ltl, atom_map) = PLTL::from_string("((Y a) S (~Y a)) B ((Y a) ~S (Y a))");
         let ctx = PastSubformularSetContext::new(&ltl);
         // Ya<{Ya}> = ~Ya
         let set = PastSubformulaSet {
@@ -130,7 +128,10 @@ mod tests {
             state: 0b0000000,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "~Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "~Ya"
+        );
         // Ya<{}> = Ya
         let set = PastSubformulaSet {
             existence: 0b0000000,
@@ -141,14 +142,20 @@ mod tests {
             state: 0b0000000,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "Ya"
+        );
         // ~Ya<{}> = Ya
         let psf = PastSubformula {
             id: 1,
             state: 0b0000010,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "Ya"
+        );
         // ~Ya<{~Ya}> = Ya
         let set = PastSubformulaSet {
             existence: 0b0000010,
@@ -159,7 +166,10 @@ mod tests {
             state: 0b0000010,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "~Ya");
+            assert_eq!(
+                rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "~Ya"
+        );
         // (Y a) S (~Y a) <{Ya}> = (~Y a) S (Y a)
         let set = PastSubformulaSet {
             existence: 0b0000001,
@@ -170,7 +180,10 @@ mod tests {
             state: 0b0000010,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "~Ya S Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "~Ya S Ya"
+        );
         // (Y a) S (~Y a) <{Ya, ~Y a}> = (~Y a) S (~Y a)
         let set = PastSubformulaSet {
             existence: 0b0000011,
@@ -181,7 +194,10 @@ mod tests {
             state: 0b0000010,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "~Ya S ~Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "~Ya S ~Ya"
+        );
         // (Y a) S (~Y a) <{Ya, ~Y a, (Y a) S (~Y a)}> = (~Y a) ~S (~Y a)
         let set = PastSubformulaSet {
             existence: 0b0000111,
@@ -192,9 +208,12 @@ mod tests {
             state: 0b0000010,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "~Ya ~S ~Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "~Ya ~S ~Ya"
+        );
 
-        let pltl: PLTL = "((Y a) S (~Y a)) & ((Y a) ~S (Y a))".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("((Y a) S (~Y a)) & ((Y a) ~S (Y a))");
         let ctx = PastSubformularSetContext::new(&pltl);
         // (Y a) S (~Y a) <{Ya}> = (~Y a) S (Y a)
         // The Ya in the set is from the second part of the formula
@@ -207,69 +226,60 @@ mod tests {
             state: 0b0000010,
         };
         let rewritten = psf.rewrite(&ctx, &set);
-        assert_eq!(format!("{}", rewritten.to_pltl(&ctx)), "~Ya S Ya");
+        assert_eq!(
+            rewritten.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "~Ya S Ya"
+        );
     }
 
     #[test]
     fn test_weaken_condition() {
         // Test Yesterday operator
-        let pltl: PLTL = "Y a".parse().unwrap();
+        let (pltl, atom_map) = PLTL::from_string("Y a");
         let ctx = PastSubformularSetContext::new(&pltl);
-        let psf = PastSubformula {
-            id: 0,
-            state: 0b0,
-        };
+        let psf = PastSubformula { id: 0, state: 0b0 };
         let condition = psf.weaken_condition(&ctx);
-        assert_eq!(format!("{}", condition.to_pltl(&ctx)), "a");
+        assert_eq!(condition.to_pltl(&ctx).format_with_atom_names(&atom_map), "a");
 
         // Test Since operator with weak=false
-        let pltl: PLTL = "a S (Y b)".parse().unwrap();
+        let (pltl, atom_map) = PLTL::from_string("a S (Y b)");
         let ctx = PastSubformularSetContext::new(&pltl);
-        let psf = PastSubformula {
-            id: 1,
-            state: 0b00,
-        };
+        let psf = PastSubformula { id: 1, state: 0b00 };
         let condition = psf.weaken_condition(&ctx);
-        assert_eq!(format!("{}", condition.to_pltl(&ctx)), "Yb");
+        assert_eq!(condition.to_pltl(&ctx).format_with_atom_names(&atom_map), "Yb");
 
         // Test Since operator with weak=true
-        let pltl: PLTL = "a S (Y b)".parse().unwrap();
+        let (pltl, atom_map) = PLTL::from_string("a S (Y b)");
         let ctx = PastSubformularSetContext::new(&pltl);
-        let psf = PastSubformula {
-            id: 1,
-            state: 0b10,
-        };
+        let psf = PastSubformula { id: 1, state: 0b10 };
         let condition = psf.weaken_condition(&ctx);
-        assert_eq!(format!("{}", condition.to_pltl(&ctx)), "a ∨ Yb");
+        assert_eq!(condition.to_pltl(&ctx).format_with_atom_names(&atom_map), "a ∨ Yb");
 
         // Test Before operator with weak=false
-        let pltl: PLTL = "a B (Y b)".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("a B (Y b)");
         let ctx = PastSubformularSetContext::new(&pltl);
-        let psf = PastSubformula {
-            id: 1,
-            state: 0b00,
-        };
+        let psf = PastSubformula { id: 1, state: 0b00 };
         let condition = psf.weaken_condition(&ctx);
-        assert_eq!(format!("{}", condition.to_pltl(&ctx)), "a ∧ Yb");
+        assert_eq!(condition.to_pltl(&ctx).format_with_atom_names(&atom_map), "a ∧ Yb");
 
         // Test Before operator with weak=true
-        let pltl: PLTL = "a B (Y b)".parse().unwrap();
+        let (pltl, atom_map) = PLTL::from_string("a B (Y b)");
         let ctx = PastSubformularSetContext::new(&pltl);
-        let psf = PastSubformula {
-            id: 1,
-            state: 0b10,
-        };
+        let psf = PastSubformula { id: 1, state: 0b10 };
         let condition = psf.weaken_condition(&ctx);
-        assert_eq!(format!("{}", condition.to_pltl(&ctx)), "Yb");
+        assert_eq!(condition.to_pltl(&ctx).format_with_atom_names(&atom_map), "Yb");
 
         // Test nested temporal formulas
-        let pltl: PLTL = "(Y a) S (Y (b S c))".parse().unwrap();
+        let (pltl, atom_map) = PLTL::from_string("(Y a) S (Y (b S c))");
         let ctx = PastSubformularSetContext::new(&pltl);
         let psf = PastSubformula {
             id: 3,
             state: 0b1000,
         };
         let condition = psf.weaken_condition(&ctx);
-        assert_eq!(format!("{}", condition.to_pltl(&ctx)), "Ya ∨ Y(b S c)");
+        assert_eq!(
+            condition.to_pltl(&ctx).format_with_atom_names(&atom_map),
+            "Ya ∨ Y(b S c)"
+        );
     }
 }

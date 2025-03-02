@@ -11,7 +11,7 @@ use crate::utils::BitSet;
 pub enum Annotated {
     Top,
     Bottom,
-    Atom(String),
+    Atom(u32),
     Unary(UnaryOp, Box<Annotated>),
     Binary(BinaryOp, Box<Annotated>, Box<Annotated>),
     PastSubformula(PastSubformula),
@@ -22,7 +22,7 @@ impl fmt::Display for Annotated {
         match self {
             Annotated::Top => write!(f, "⊤"),
             Annotated::Bottom => write!(f, "⊥"),
-            Annotated::Atom(s) => write!(f, "{}", s),
+            Annotated::Atom(s) => write!(f, "\"{}\"", s),
             Annotated::Unary(UnaryOp::Not, box content @ Annotated::Unary(UnaryOp::Not, _)) => {
                 write!(f, "{}{}", UnaryOp::Not, content)
             }
@@ -70,7 +70,7 @@ impl Annotated {
         match pltl {
             PLTL::Top => Annotated::Top,
             PLTL::Bottom => Annotated::Bottom,
-            PLTL::Atom(atom) => Annotated::Atom(atom.clone()),
+            PLTL::Atom(atom) => Annotated::Atom(*atom),
             PLTL::Unary(op, box arg) => {
                 if op.is_past() {
                     let psf_id = context
@@ -116,7 +116,7 @@ impl Annotated {
         match self {
             Annotated::Top => PLTL::Top,
             Annotated::Bottom => PLTL::Bottom,
-            Annotated::Atom(atom) => PLTL::Atom(atom.clone()),
+            Annotated::Atom(atom) => PLTL::Atom(*atom),
             Annotated::Unary(op, arg) => PLTL::new_unary(*op, arg.to_pltl(context)),
             Annotated::Binary(op, left, right) => {
                 PLTL::new_binary(*op, left.to_pltl(context), right.to_pltl(context))
@@ -133,7 +133,7 @@ impl Annotated {
         match self {
             Annotated::Top => Annotated::Top,
             Annotated::Bottom => Annotated::Bottom,
-            Annotated::Atom(atom) => Annotated::Atom(atom.clone()),
+            Annotated::Atom(atom) => Annotated::Atom(*atom),
             Annotated::Unary(op, arg) => {
                 Annotated::Unary(*op, Box::new(arg.rewrite_with_set(context, set)))
             }

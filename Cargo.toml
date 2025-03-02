@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bimap = "0.6.3"
 clap = { version = "4.5.31", features = ["derive"] }
 fxhash = "0.2.1"
 hoars = { git = "https://github.com/longfangsong/hoars.git", rev = "e7721fa" }
@@ -19,3 +20,10 @@ path = "src/bin/pltl2dra.rs"
 
 [profile.release]
 debug = true
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "hashmap_vs_vec"
+harness = false

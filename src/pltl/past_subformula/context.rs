@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_context_init() {
-        let pltl: PLTL = "((Y a) S (~Y a)) B ((Y a) ~S (Y a))".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("((Y a) S (~Y a)) B ((Y a) ~S (Y a))");
         let context = PastSubformularSetContext::new(&pltl);
         assert_eq!(context.past_subformulas.len(), 7);
         assert_eq!(context.masks.len(), 7);
@@ -206,7 +206,7 @@ mod tests {
         assert_eq!(context.masks[2], 0b0000111);
         assert_eq!(context.same_shape_formulas[0], 0b0011011);
 
-        let pltl: PLTL = "((Y a) S (~Y b)) & ((Y a) ~S (Y b))".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("((Y a) S (~Y b)) & ((Y a) ~S (Y b))");
         let context = PastSubformularSetContext::new(&pltl);
         assert_eq!(context.past_subformulas.len(), 6);
         assert_eq!(context.masks.len(), 6);
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(context.same_shape_formulas[0], 0b001001);
         assert_eq!(context.same_shape_formulas[2], 0b100100);
 
-        let pltl: PLTL = "(Y (a & b)) S (Y a) | (Y a) B (Y b)".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("(Y (a & b)) S (Y a) | (Y a) B (Y b)");
         let context = PastSubformularSetContext::new(&pltl);
         println!("{}", context);
         assert_eq!(context.past_subformulas.len(), 6);

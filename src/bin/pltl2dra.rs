@@ -1,10 +1,9 @@
-use clap::{Parser, ArgGroup};
+use clap::{ArgGroup, Parser};
+use hoars::output::to_hoa;
+use pltl::automata::{Context, State};
+use pltl::pltl::PLTL;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::collections::HashSet;
-use pltl::pltl::{parse, PLTL};
-use pltl::automata::{Context, State};
-use hoars::output::to_hoa;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -29,7 +28,7 @@ struct Args {
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    
+
     let input = if let Some(file_path) = args.filein {
         if file_path == "-" {
             let mut buffer = String::new();
@@ -51,24 +50,18 @@ fn main() -> io::Result<()> {
         buffer
     };
 
-    let pltl_formula = match parse(&input) {
-        Ok((rest, formula)) => formula.normal_form(),
-        Err(e) => {
-            eprintln!("Cannot parse formula: {}", e);
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "无效的 PLTL 公式"));
-        }
-    };
-    
-    let atoms = extract_atoms(&pltl_formula);
-    
-    let context = Context::new(&pltl_formula);
+    let (pltl_formula, atom_map) = PLTL::from_string(&input);
+
+    let context = Context::new(&pltl_formula, atom_map);
     let initial_state = State::new(&context);
-    
-    let automaton = initial_state.dump_automata(&context, &atoms);
-    
+
+    let all_letters = context.atom_map.right_values().cloned().collect();
+    let automaton =
+        initial_state.dump_automata(&context, &all_letters);
+
     let hoa_automaton = automaton.dump_hoa(&format!("\"{pltl_formula}\""));
     let output = to_hoa(&hoa_automaton);
-    
+
     if let Some(file_path) = args.fileout {
         if file_path == "-" {
             io::stdout().write_all(output.as_bytes())?;
@@ -81,24 +74,4 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
-}
-
-fn extract_atoms(formula: &PLTL) -> HashSet<String> {
-    let mut atoms = HashSet::new();
-    
-    match formula {
-        PLTL::Atom(name) => {
-            atoms.insert(name.clone());
-        },
-        PLTL::Unary(_, subformula) => {
-            atoms.extend(extract_atoms(subformula));
-        },
-        PLTL::Binary(_, left, right) => {
-            atoms.extend(extract_atoms(left));
-            atoms.extend(extract_atoms(right));
-        },
-        _ => {}
-    }
-    
-    atoms
 }

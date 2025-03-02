@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{pltl::PLTL, utils::{BitSet, BitSet32}};
+use crate::{
+    pltl::PLTL,
+    utils::{BitSet, BitSet32},
+};
 
 use super::{context::PastSubformularSetContext, formula::PastSubformula};
 
@@ -132,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_set_contains() {
-        let pltl: PLTL = "((Y a) S (~Y a)) B ((Y a) ~S (Y a))".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("((Y a) S (~Y a)) B ((Y a) ~S (Y a))");
         let context = PastSubformularSetContext::new(&pltl);
         // case 1: exists in the same place
         let part = PastSubformula {
@@ -188,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_set_next() {
-        let pltl: PLTL = "((Y a) S (~Y a)) B ((Y a) ~S (Y a))".parse().unwrap();
+        let (pltl, _) = PLTL::from_string("((Y a) S (~Y a)) B ((Y a) ~S (Y a))");
         let context = PastSubformularSetContext::new(&pltl);
         let mut current_set = PastSubformulaSet {
             existence: 0b0000000,
@@ -204,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_set_to_proper_set() {
-        let ltl: PLTL = "Ya S ~Ya".parse().unwrap();
+        let (ltl, _) = PLTL::from_string("Ya S ~Ya");
         let context = PastSubformularSetContext::new(&ltl);
         let set = PastSubformulaSet {
             existence: 0b011,

@@ -14,7 +14,7 @@ pub fn transition(
     u_set: BitSet32,
     state: &PLTL,
     bed_next_state: &[Annotated],
-    letter: &HashSet<String>,
+    letter: &HashSet<u32>,
 ) -> PLTL {
     if matches!(state, PLTL::Bottom) {
         let mut result = Vec::with_capacity(ctx.c_sets.len());
