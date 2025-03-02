@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::pltl::{after_function::local_after_annotated, Annotated, BinaryOp};
+use crate::{pltl::{after_function::local_after_annotated, Annotated, BinaryOp}, utils::BitSet32};
 
 use super::Context;
 fn is_saturated(ctx: &Context, i: usize, j: usize) -> bool {
@@ -19,7 +19,7 @@ fn is_saturated(ctx: &Context, i: usize, j: usize) -> bool {
 pub fn rewrite_condition_function(
     ctx: &Context,
     current: &[Annotated],
-    letter: &HashSet<u32>,
+    letter: BitSet32,
 ) -> Vec<Annotated> {
     let k = ctx.c_sets.len();
     let mut result = Vec::with_capacity(current.len());

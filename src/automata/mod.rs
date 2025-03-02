@@ -3,20 +3,18 @@ mod safety;
 mod stable;
 mod weakening_conditions;
 
-use guarantee::GuaranteeyStateGivenN;
 use crate::utils::{powerset, BiMap};
+use crate::{
+    pltl::{Annotated, PastSubformulaSet, PastSubformularSetContext, UnaryOp, PLTL},
+    utils::{BitSet, BitSet32},
+};
+use guarantee::GuaranteeyStateGivenN;
 use hoars::{
     AbstractLabelExpression, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
     AcceptanceSignature, Edge, Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
 };
 use itertools::Itertools;
 use safety::SafetyStateGivenM;
-use crate::{
-    pltl::{
-        Annotated, PastSubformulaSet, PastSubformularSetContext, UnaryOp, PLTL
-    },
-    utils::{BitSet, BitSet32},
-};
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self},
@@ -186,7 +184,7 @@ pub struct State {
 pub struct DumpedAutomata {
     init_state: State,
     atom_map: BiMap<String, u32>,
-    transitions: HashMap<State, Vec<(HashSet<u32>, State)>>,
+    transitions: HashMap<State, Vec<(BitSet32, State)>>,
     state_id_map: HashMap<State, usize>,
 }
 
@@ -194,7 +192,7 @@ impl DumpedAutomata {
     pub fn new(
         init_state: State,
         atom_map: BiMap<String, u32>,
-        transitions: HashMap<State, Vec<(HashSet<u32>, State)>>,
+        transitions: HashMap<State, Vec<(BitSet32, State)>>,
     ) -> Self {
         let mut state_id_map = HashMap::new();
         transitions.keys().enumerate().for_each(|(i, state)| {
@@ -206,18 +204,6 @@ impl DumpedAutomata {
             transitions,
             state_id_map,
         }
-    }
-
-    pub fn ap(&self, atom_map: &BiMap<String, u32>) -> Vec<u32> {
-        self.transitions
-            .values()
-            .flat_map(|v| v.iter().map(|(event, _)| event))
-            .max_by_key(|it| it.len())
-            .unwrap_or(&HashSet::new())
-            .iter()
-            .sorted()
-            .cloned()
-            .collect()
     }
 
     pub fn stable_at_m_n(&self, m_id: BitSet32, n_id: BitSet32) -> Vec<(PLTL, PLTL)> {
@@ -303,7 +289,7 @@ impl DumpedAutomata {
             })
             .reduce(|acc, elem| acc.or(elem))
             .unwrap();
-        let ap = self.ap(&self.atom_map);
+
         let result = HoaAutomaton::from_parts(
             Header::from_vec(vec![
                 HeaderItem::v1(),
@@ -319,7 +305,13 @@ impl DumpedAutomata {
                     Property::Complete,
                     Property::StateAcceptance,
                 ]),
-                HeaderItem::AP(ap.iter().map(|id| self.atom_map.get_by_right(id).unwrap().clone()).collect()),
+                HeaderItem::AP(
+                    self.atom_map
+                        .iter()
+                        .sorted_by_key(|(_, id)| *id)
+                        .map(|(atom, _)| atom.clone())
+                        .collect(),
+                ),
             ]),
             self.state_id_map
                 .iter()
@@ -327,11 +319,11 @@ impl DumpedAutomata {
                     let edges = self.transitions[state]
                         .iter()
                         .map(|(letter, next_state)| {
-                            let label_characters = ap
-                                .iter()
+                            let label_characters = letter
+                                .bits(self.atom_map.len() as u32)
                                 .enumerate()
-                                .map(|(i, ch)| {
-                                    if letter.contains(ch) {
+                                .map(|(i, it)| {
+                                    if it {
                                         AbstractLabelExpression::Integer(i as _)
                                     } else {
                                         AbstractLabelExpression::Negated(Box::new(
@@ -339,7 +331,7 @@ impl DumpedAutomata {
                                         ))
                                     }
                                 })
-                                .collect::<Vec<AbstractLabelExpression>>();
+                                .collect::<Vec<_>>();
                             Edge::from_parts(
                                 hoars::Label(hoars::AbstractLabelExpression::Conjunction(
                                     label_characters,
@@ -391,7 +383,11 @@ impl fmt::Display for DumpedAutomata {
                 writeln!(
                     f,
                     "{{{}}} {}",
-                    letter.iter().map(|id| self.atom_map.get_by_right(id).unwrap().clone()).collect::<Vec<_>>().join(","),
+                    letter
+                        .iter()
+                        .map(|id| self.atom_map.get_by_right(&id).unwrap().clone())
+                        .collect::<Vec<_>>()
+                        .join(","),
                     self.state_id_map[next_state]
                 )?;
             }
@@ -494,7 +490,7 @@ impl State {
         }
     }
 
-    pub fn transition(&self, ctx: &Context, letter: &HashSet<u32>) -> State {
+    pub fn transition(&self, ctx: &Context, letter: BitSet32) -> State {
         let next_weakening_condition = weakening_conditions::rewrite_condition_function(
             ctx,
             &self.weakening_condition,
@@ -508,8 +504,7 @@ impl State {
                 let mut new_eventually_states = Vec::with_capacity(ctx.c_sets.len());
                 let mut new_globally_states = Vec::with_capacity(ctx.c_sets.len());
                 for (u_id, u) in m_id.iter().enumerate() {
-                    let current =
-                        &self.states[m_id as usize][n_id as usize].guarantee_state[u_id];
+                    let current = &self.states[m_id as usize][n_id as usize].guarantee_state[u_id];
                     let new_eventually_state = guarantee::transition(
                         ctx,
                         u,
@@ -521,8 +516,7 @@ impl State {
                     new_eventually_states.push(new_eventually_state);
                 }
                 for (v_id, v) in n_id.iter().enumerate() {
-                    let current =
-                        &self.states[m_id as usize][n_id as usize].safety_state[v_id];
+                    let current = &self.states[m_id as usize][n_id as usize].safety_state[v_id];
                     let new_globally_state = safety::transition(
                         ctx,
                         v,
@@ -556,7 +550,7 @@ impl State {
         }
     }
 
-    pub fn dump_automata(&self, ctx: &Context, all_letters: &HashSet<u32>) -> DumpedAutomata {
+    pub fn dump_automata(&self, ctx: &Context, letters_count: usize) -> DumpedAutomata {
         let mut result = HashMap::new();
         let mut pending_states: Vec<_> = Vec::new();
         pending_states.push(self.clone());
@@ -564,9 +558,8 @@ impl State {
             if result.contains_key(&current_state) {
                 continue;
             }
-            let letter_power_set = powerset(all_letters);
+            let letter_power_set = BitSet32::power_set(letters_count);
             let transition = letter_power_set
-                .iter()
                 .map(|letter| {
                     let next_state = current_state.transition(ctx, letter);
                     pending_states.push(next_state.clone());

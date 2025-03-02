@@ -55,11 +55,10 @@ fn main() -> io::Result<()> {
     let context = Context::new(&pltl_formula, atom_map);
     let initial_state = State::new(&context);
 
-    let all_letters = context.atom_map.right_values().cloned().collect();
     let automaton =
-        initial_state.dump_automata(&context, &all_letters);
+        initial_state.dump_automata(&context, context.atom_map.len());
 
-    let hoa_automaton = automaton.dump_hoa(&format!("\"{pltl_formula}\""));
+    let hoa_automaton = automaton.dump_hoa(&format!("\"{}\"", pltl_formula.format_with_atom_names(&context.atom_map)));
     let output = to_hoa(&hoa_automaton);
 
     if let Some(file_path) = args.fileout {

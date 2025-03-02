@@ -27,3 +27,7 @@ criterion = "0.5.1"
 [[bench]]
 name = "hashmap_vs_vec"
 harness = false
+
+[[bench]]
+name = "hashset_vs_bitset"
+harness = false

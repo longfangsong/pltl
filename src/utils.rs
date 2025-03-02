@@ -11,8 +11,12 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
     where
         Self: 'a;
 
+    type BitsIter<'a>: Iterator<Item = bool>
+        where
+            Self: 'a;
+
     fn full_with_size(bits: usize) -> Self;
-    fn power_set(&self, size: usize) -> RangeInclusive<u32>;
+    fn power_set(size: usize) -> RangeInclusive<u32>;
     fn get(&self, index: u32) -> bool;
     fn set_bit(&mut self, index: u32);
     fn clear_bit(&mut self, index: u32);
@@ -34,6 +38,7 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
     fn intersection(&self, other: &Self) -> Self;
     fn union(&self, other: &Self) -> Self;
     fn iter(&self) -> Self::Iter<'_>;
+    fn bits(&self, max_index: u32) -> Self::BitsIter<'_>;
     fn len(&self) -> u32 {
         self.iter().count() as u32
     }
@@ -65,9 +70,30 @@ impl Iterator for BitSet32Iter<'_> {
     }
 }
 
+pub struct BitSet32BitsIter<'a> {
+    set: &'a BitSet32,
+    current_index: u32,
+    max_index: u32,
+}
+
+impl Iterator for BitSet32BitsIter<'_> {
+    type Item = bool;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_index < self.max_index {
+            let bit = self.set & (1 << self.current_index) != 0;
+            self.current_index += 1;
+            Some(bit)
+        } else {
+            None
+        }
+    }
+}
+
+
 impl BitSet for BitSet32 {
     type Iter<'a> = BitSet32Iter<'a>;
-
+    type BitsIter<'a> = BitSet32BitsIter<'a>;
     fn full_with_size(bits: usize) -> Self {
         if bits == 32 {
             Self::MAX
@@ -76,7 +102,7 @@ impl BitSet for BitSet32 {
         }
     }
 
-    fn power_set(&self, size: usize) -> RangeInclusive<u32> {
+    fn power_set(size: usize) -> RangeInclusive<u32> {
         0..=Self::full_with_size(size)
     }
 
@@ -126,6 +152,14 @@ impl BitSet for BitSet32 {
             }
         }
         holder.into_par_iter()
+    }
+    
+    fn bits(&self, max_index: u32) -> Self::BitsIter<'_> {
+        BitSet32BitsIter {
+            set: self,
+            current_index: 0,
+            max_index,
+        }
     }
 }
 

@@ -6,10 +6,10 @@ use super::{
     utils::{conjunction, disjunction},
     BinaryOp, UnaryOp, PLTL,
 };
-use crate::utils::powerset;
+use crate::utils::{powerset, BitSet32};
 use crate::utils::BitSet;
 
-fn local_post_update(f: &PLTL, letter: &HashSet<u32>, past_st: &HashSet<PLTL>) -> PLTL {
+fn local_post_update(f: &PLTL, letter: BitSet32, past_st: &HashSet<PLTL>) -> PLTL {
     let first_part = f.rewrite_with_set(past_st);
     let psf_set: HashSet<PLTL> = f.past_subformulas().into_iter().cloned().collect();
     let intersection: Vec<_> = psf_set
@@ -27,7 +27,7 @@ fn local_post_update(f: &PLTL, letter: &HashSet<u32>, past_st: &HashSet<PLTL>) -
 fn local_post_update_annotated(
     ctx: &PastSubformularSetContext,
     f: &Annotated,
-    letter: &HashSet<u32>,
+    letter: BitSet32,
     past_st: &PastSubformulaSet,
 ) -> Annotated {
     let mut result = f.rewrite_with_set(ctx, past_st);
@@ -47,21 +47,21 @@ fn local_post_update_annotated(
 pub fn local_after_annotated(
     ctx: &PastSubformularSetContext,
     f: &Annotated,
-    letter: &HashSet<u32>,
+    letter: BitSet32,
     past_st: &PastSubformulaSet,
 ) -> Annotated {
     match f {
         Annotated::Top => Annotated::Top,
         Annotated::Bottom => Annotated::Bottom,
         Annotated::Atom(atom) => {
-            if letter.contains(atom) {
+            if letter.contains(*atom) {
                 Annotated::Top
             } else {
                 Annotated::Bottom
             }
         }
         Annotated::Unary(UnaryOp::Not, box Annotated::Atom(atom)) => {
-            if letter.contains(atom) {
+            if letter.contains(*atom) {
                 Annotated::Bottom
             } else {
                 Annotated::Top
@@ -145,19 +145,19 @@ pub fn local_after_annotated(
     .simplify()
 }
 
-pub fn local_after(f: &PLTL, letter: &HashSet<u32>, past_st: &HashSet<PLTL>) -> PLTL {
+pub fn local_after(f: &PLTL, letter: BitSet32, past_st: &HashSet<PLTL>) -> PLTL {
     match f {
         PLTL::Top => PLTL::Top,
         PLTL::Bottom => PLTL::Bottom,
         PLTL::Atom(atom) => {
-            if letter.contains(atom) {
+            if letter.contains(*atom) {
                 PLTL::Top
             } else {
                 PLTL::Bottom
             }
         }
         PLTL::Unary(UnaryOp::Not, box PLTL::Atom(atom)) => {
-            if letter.contains(atom) {
+            if letter.contains(*atom) {
                 PLTL::Bottom
             } else {
                 PLTL::Top
@@ -203,7 +203,7 @@ pub fn local_after(f: &PLTL, letter: &HashSet<u32>, past_st: &HashSet<PLTL>) -> 
     }
 }
 
-pub fn after_function(f: &PLTL, letter: &HashSet<u32>) -> PLTL {
+pub fn after_function(f: &PLTL, letter: BitSet32) -> PLTL {
     let psf_set: HashSet<PLTL> = f.past_subformulas().into_iter().cloned().collect();
     let powerset = powerset(&psf_set);
     let result = disjunction(powerset.iter().map(|set| local_after(f, letter, set))).simplify();

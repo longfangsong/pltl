@@ -4,7 +4,7 @@
 
 pub mod automata;
 pub mod pltl;
-mod utils;
+pub mod utils;
 
 #[cfg(test)]
 mod tests {}

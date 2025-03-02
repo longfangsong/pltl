@@ -12,7 +12,7 @@ pub fn transition(
     u_set: BitSet32,
     state: &(PLTL, PLTL),
     bed_next_state: &[Annotated],
-    letter: &HashSet<u32>,
+    letter: BitSet32,
 ) -> (PLTL, PLTL) {
     let after_function_first_part = after_function(&state.0, letter).normal_form();
     let second_part = if matches!(state.1, PLTL::Bottom) {
