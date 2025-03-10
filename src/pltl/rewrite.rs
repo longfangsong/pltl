@@ -205,6 +205,14 @@ impl PLTL {
     }
 }
 
+pub fn rewrite_set_with_set(set: &HashSet<PLTL>, rewrite_with: &HashSet<PLTL>) -> HashSet<PLTL> {
+    let mut result = HashSet::new();
+    for pltl in set {
+        result.insert(pltl.rewrite_with_set(rewrite_with));
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

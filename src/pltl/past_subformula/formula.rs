@@ -33,7 +33,7 @@ impl PastSubformula {
         }
     }
 
-    fn set_weaken(&self, root: &mut PLTL, psf_id: u32, ctx: &PastSubformularSetContext<'_>) -> u32 {
+    fn set_weaken(&self, root: &mut PLTL, psf_id: u32) -> u32 {
         let weak = self.state.get(psf_id);
         if root.is_temporal() {
             root.inplace_rewrite(weak);
@@ -41,19 +41,19 @@ impl PastSubformula {
                 return psf_id;
             }
             match root {
-                PLTL::Unary(_, box inner) => self.set_weaken(inner, psf_id - 1, ctx),
+                PLTL::Unary(_, box inner) => self.set_weaken(inner, psf_id - 1),
                 PLTL::Binary(_, box lhs, box rhs) => {
-                    let rhs_id = self.set_weaken(rhs, psf_id - 1, ctx);
-                    self.set_weaken(lhs, rhs_id, ctx)
+                    let rhs_id = self.set_weaken(rhs, psf_id - 1);
+                    self.set_weaken(lhs, rhs_id)
                 }
                 _ => unreachable!(),
             }
         } else {
             match root {
-                PLTL::Unary(_, box inner) => self.set_weaken(inner, psf_id, ctx),
+                PLTL::Unary(_, box inner) => self.set_weaken(inner, psf_id),
                 PLTL::Binary(_, box lhs, box rhs) => {
-                    let lhs_id = self.set_weaken(lhs, psf_id, ctx);
-                    self.set_weaken(rhs, lhs_id, ctx)
+                    let lhs_id = self.set_weaken(lhs, psf_id);
+                    self.set_weaken(rhs, lhs_id)
                 }
                 _ => psf_id,
             }
@@ -62,9 +62,9 @@ impl PastSubformula {
 
     pub fn to_pltl(&self, ctx: &PastSubformularSetContext<'_>) -> PLTL {
         let mut result = ctx.past_subformulas[self.id as usize].clone();
-        self.set_weaken(&mut result, self.id, ctx);
+        self.set_weaken(&mut result, self.id);
         result
-    }
+    } 
 
     pub fn weaken_condition(&self, ctx: &PastSubformularSetContext<'_>) -> Annotated {
         let op = ctx.past_subformulas[self.id as usize];

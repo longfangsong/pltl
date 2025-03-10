@@ -3,26 +3,37 @@ mod safety;
 mod stable;
 mod weakening_conditions;
 
-use crate::utils::{powerset, BiMap};
+use crate::utils::Map;
 use crate::{
     pltl::{Annotated, PastSubformulaSet, PastSubformularSetContext, UnaryOp, PLTL},
     utils::{BitSet, BitSet32},
 };
 use guarantee::GuaranteeyStateGivenN;
+use hoars::output::to_hoa;
 use hoars::{
     AbstractLabelExpression, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
     AcceptanceSignature, Edge, Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
 };
 use itertools::Itertools;
 use safety::SafetyStateGivenM;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self},
+    fmt,
 };
+
+type AutomataRecord<S> = (S, BitSet32, S);
+
+struct AutomataDump<S> {
+    init_state: S,
+    transitions: Vec<AutomataRecord<S>>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Context<'a> {
-    pub atom_map: BiMap<String, u32>,
+    pub atom_map: Vec<String>,
     after_function_cache: HashMap<&'a PLTL, Vec<(&'a HashSet<String>, PLTL)>>,
     psf_context: PastSubformularSetContext<'a>,
     c_sets: Vec<PastSubformulaSet>,
@@ -75,7 +86,7 @@ impl fmt::Display for Context<'_> {
 }
 
 impl<'a> Context<'a> {
-    pub fn new(ltl: &'a PLTL, atom_map: BiMap<String, u32>) -> Self {
+    pub fn new(ltl: &'a PLTL, atom_map: Vec<String>) -> Self {
         let psf_context = PastSubformularSetContext::new(ltl);
         let mut c_sets = Vec::with_capacity(1 << psf_context.past_subformulas.len());
         let mut c = PastSubformulaSet {
@@ -183,7 +194,7 @@ pub struct State {
 
 pub struct DumpedAutomata {
     init_state: State,
-    atom_map: BiMap<String, u32>,
+    atom_map: Vec<String>,
     transitions: HashMap<State, Vec<(BitSet32, State)>>,
     state_id_map: HashMap<State, usize>,
 }
@@ -191,7 +202,7 @@ pub struct DumpedAutomata {
 impl DumpedAutomata {
     pub fn new(
         init_state: State,
-        atom_map: BiMap<String, u32>,
+        atom_map: Vec<String>,
         transitions: HashMap<State, Vec<(BitSet32, State)>>,
     ) -> Self {
         let mut state_id_map = HashMap::new();
@@ -305,13 +316,7 @@ impl DumpedAutomata {
                     Property::Complete,
                     Property::StateAcceptance,
                 ]),
-                HeaderItem::AP(
-                    self.atom_map
-                        .iter()
-                        .sorted_by_key(|(_, id)| *id)
-                        .map(|(atom, _)| atom.clone())
-                        .collect(),
-                ),
+                HeaderItem::AP(self.atom_map.clone()),
             ]),
             self.state_id_map
                 .iter()
@@ -385,7 +390,7 @@ impl fmt::Display for DumpedAutomata {
                     "{{{}}} {}",
                     letter
                         .iter()
-                        .map(|id| self.atom_map.get_by_right(&id).unwrap().clone())
+                        .map(|id| self.atom_map[id as usize].clone())
                         .collect::<Vec<_>>()
                         .join(","),
                     self.state_id_map[next_state]
@@ -491,11 +496,8 @@ impl State {
     }
 
     pub fn transition(&self, ctx: &Context, letter: BitSet32) -> State {
-        let next_weakening_condition = weakening_conditions::rewrite_condition_function(
-            ctx,
-            &self.weakening_condition,
-            letter,
-        );
+        let next_weakening_condition =
+            weakening_conditions::transition(ctx, &self.weakening_condition, letter);
         let mut new_states =
             Vec::with_capacity(ctx.u_type_subformulas.len() * ctx.v_type_subformulas.len());
         for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
@@ -563,11 +565,178 @@ impl State {
                 .map(|letter| {
                     let next_state = current_state.transition(ctx, letter);
                     pending_states.push(next_state.clone());
-                    (letter.clone(), next_state)
+                    (letter, next_state)
                 })
                 .collect();
             result.insert(current_state.clone(), transition);
         }
         DumpedAutomata::new(self.clone(), ctx.atom_map.clone(), result)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AllSubAutomatas {
+    // u_item_id, v_set -> automata
+    guarantee_automatas: Map<(u32, BitSet32), HoaAutomaton>,
+    // v_item_id, u_set -> automata
+    safety_automatas: Map<(u32, BitSet32), HoaAutomaton>,
+    // u_set -> automata
+    stable_automatas: Vec<HoaAutomaton>,
+}
+
+impl AllSubAutomatas {
+    pub fn new(ctx: &Context) -> Self {
+        let mut weakening_condition_init_state: Vec<_> =
+            (0..ctx.c_sets.len()).map(|_| Annotated::Bottom).collect();
+        weakening_condition_init_state[ctx.init_c] = Annotated::Top;
+        let mut guarantee_automatas = Map::default();
+        let mut safety_automatas = Map::default();
+        let mut stable_automatas = Vec::new();
+        for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
+            for n_id in 0u32..(1 << ctx.v_type_subformulas.len()) {
+                for u_item in m_id.iter() {
+                    let guarantee_init_state = guarantee::initial_state(&ctx, u_item, n_id);
+                    let guarantee_automata = guarantee::dump_hoa(
+                        ctx,
+                        u_item,
+                        n_id,
+                        &guarantee_init_state,
+                        &weakening_condition_init_state,
+                    );
+                    guarantee_automatas.insert((u_item, n_id), guarantee_automata);
+                }
+                for v_item in n_id.iter() {
+                    let safety_init_state = safety::initial_state(&ctx, v_item, m_id);
+                    let safety_automata = safety::dump_hoa(
+                        ctx,
+                        v_item,
+                        m_id,
+                        &safety_init_state,
+                        &weakening_condition_init_state,
+                    );
+                    safety_automatas.insert((v_item, m_id), safety_automata);
+                }
+            }
+            let stable_init_state = stable::initial_state(&ctx, m_id);
+            stable_automatas.push(stable::dump_hoa(
+                ctx,
+                m_id,
+                &stable_init_state,
+                &weakening_condition_init_state,
+            ));
+        }
+        Self {
+            guarantee_automatas,
+            safety_automatas,
+            stable_automatas,
+        }
+    }
+
+    pub fn to_files(&self, ctx: &Context, path: &str) {
+        for ((u_item_id, v_set), automata) in &self.guarantee_automatas {
+            let file_name = format!("guarantee_{u_item_id}_0b{:b}.hoa", v_set);
+            let file_path = Path::new(path).join(&file_name);
+            let mut file = File::create(file_path).unwrap();
+            write!(file, "{}", to_hoa(&automata)).unwrap();
+        }
+        for ((v_item_id, u_set), automata) in &self.safety_automatas {
+            let file_name = format!("safety_0b{:b}_{v_item_id}.hoa", u_set);
+            let file_path = Path::new(path).join(&file_name);
+            let mut file = File::create(file_path).unwrap();
+            write!(file, "{}", to_hoa(&automata)).unwrap();
+        }
+        for (u_set, automata) in self.stable_automatas.iter().enumerate() {
+            let file_name = format!("stable_0b{:b}.hoa", u_set);
+            let file_path = Path::new(path).join(&file_name);
+            let mut file = File::create(file_path).unwrap();
+            write!(file, "{}", to_hoa(&automata)).unwrap();
+        }
+        let mut makefile_content = String::new();
+        for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
+            for n_id in 0u32..(1 << ctx.v_type_subformulas.len()) {
+                if m_id != 0 {
+                    let file_name = format!("b2_0b{:b}_0b{:b}.hoa", m_id, n_id);
+                    makefile_content += &format!("{}: ", file_name);
+                    makefile_content += &m_id
+                        .iter()
+                        .map(|u_item_id| format!("guarantee_{u_item_id}_0b{:b}.hoa ", n_id))
+                        .join(" ");
+                    makefile_content += &format!("\n\tautfilt --Buchi -o {} ", file_name);
+                    makefile_content += &m_id
+                        .iter()
+                        .enumerate()
+                        .map(|(id, u_item_id)| {
+                            if id == 0 {
+                                format!("-F guarantee_{u_item_id}_0b{:b}.hoa ", n_id)
+                            } else {
+                                format!("--product=guarantee_{u_item_id}_0b{:b}.hoa ", n_id)
+                            }
+                        })
+                        .join(" ");
+                    makefile_content += "\n";
+                }
+                if n_id != 0 {
+                    let file_name = format!("c3_0b{:b}_0b{:b}.hoa", m_id, n_id);
+                    makefile_content += &format!("{}: ", file_name);
+                    makefile_content += &n_id
+                        .iter()
+                        .map(|v_item_id| format!("safety_0b{:b}_{v_item_id}.hoa ", m_id))
+                        .join(" ");
+                    makefile_content += &format!("\n\tautfilt --coBuchi -o {} ", file_name);
+                    makefile_content += &n_id
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v_item_id)| {
+                            if i == 0 {
+                                format!("-F safety_0b{:b}_{v_item_id}.hoa ", m_id)
+                            } else {
+                                format!("--product=safety_0b{:b}_{v_item_id}.hoa ", m_id)
+                            }
+                        })
+                        .join(" ");
+                    makefile_content += "\n";
+                }
+
+                let file_name = format!("rabin_0b{:b}_0b{:b}.hoa", m_id, n_id);
+                makefile_content += &format!("{}: ", file_name);
+                makefile_content += &format!("stable_0b{:b}.hoa ", m_id);
+                if m_id != 0 {
+                    makefile_content += &format!("b2_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                }
+                if n_id != 0 {
+                    makefile_content += &format!("c3_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                }
+                makefile_content += &format!("\n\tautfilt --gra -o {} ", file_name);
+                makefile_content += &format!("-F stable_0b{:b}.hoa ", m_id);
+                if m_id != 0 {
+                    makefile_content += &format!("--product=b2_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                }
+                if n_id != 0 {
+                    makefile_content += &format!("--product=c3_0b{:b}_0b{:b}.hoa", m_id, n_id);
+                }
+                makefile_content += "\n";
+            }
+        }
+        let file_name = format!("result.hoa");
+        makefile_content += &format!("{}: ", file_name);
+        for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
+            for n_id in 0u32..(1 << ctx.v_type_subformulas.len()) {
+                makefile_content += &format!("rabin_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+            }
+        }
+        makefile_content += &format!("\n\tautfilt --gra --generic --complete -D -o {} ", file_name);
+        for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
+            for n_id in 0u32..(1 << ctx.v_type_subformulas.len()) {
+                if m_id == 0 && n_id == 0 {
+                    makefile_content += &format!("-F rabin_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                } else {
+                    makefile_content += &format!("--product-or=rabin_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                }
+            }
+        }
+        makefile_content += "\n";
+        let makefile_path = Path::new(path).join("Makefile");
+        let mut file = File::create(makefile_path).unwrap();
+        write!(file, "{}", makefile_content).unwrap();
     }
 }

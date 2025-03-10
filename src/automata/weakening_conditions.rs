@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 
 use crate::{pltl::{after_function::local_after_annotated, Annotated, BinaryOp}, utils::BitSet32};
 
@@ -16,7 +15,7 @@ fn is_saturated(ctx: &Context, i: usize, j: usize) -> bool {
     true
 }
 
-pub fn rewrite_condition_function(
+pub fn transition(
     ctx: &Context,
     current: &[Annotated],
     letter: BitSet32,

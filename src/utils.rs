@@ -1,8 +1,13 @@
 use bimap::BiHashMap;
 use fxhash::FxBuildHasher;
+use hoars::AbstractLabelExpression;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::RangeInclusive;
+
+pub type Map<K, V> = HashMap<K, V, FxBuildHasher>;
+
+pub type Set<T> = HashSet<T, FxBuildHasher>;
 
 pub type BiMap<L, R> = BiHashMap<L, R, FxBuildHasher, FxBuildHasher>;
 
@@ -12,8 +17,8 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
         Self: 'a;
 
     type BitsIter<'a>: Iterator<Item = bool>
-        where
-            Self: 'a;
+    where
+        Self: 'a;
 
     fn full_with_size(bits: usize) -> Self;
     fn power_set(size: usize) -> RangeInclusive<u32>;
@@ -90,7 +95,6 @@ impl Iterator for BitSet32BitsIter<'_> {
     }
 }
 
-
 impl BitSet for BitSet32 {
     type Iter<'a> = BitSet32Iter<'a>;
     type BitsIter<'a> = BitSet32BitsIter<'a>;
@@ -153,7 +157,7 @@ impl BitSet for BitSet32 {
         }
         holder.into_par_iter()
     }
-    
+
     fn bits(&self, max_index: u32) -> Self::BitsIter<'_> {
         BitSet32BitsIter {
             set: self,
@@ -177,6 +181,20 @@ pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(origin: &HashSet<T>) 
     result
 }
 
+pub fn character_to_label_expression(letter: BitSet32, atom_count: usize) -> Vec<AbstractLabelExpression> {
+    letter
+        .bits(atom_count as u32)
+        .enumerate()
+        .map(|(i, it)| {
+            if it {
+                AbstractLabelExpression::Integer(i as _)
+            } else {
+                AbstractLabelExpression::Negated(Box::new(AbstractLabelExpression::Integer(i as _)))
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -186,10 +204,12 @@ mod tests {
     #[test]
     fn test_powerset() {
         let set = HashSet::from(["a", "b"]);
-        let expected = [HashSet::new(),
+        let expected = [
+            HashSet::new(),
             HashSet::from(["a"]),
             HashSet::from(["b"]),
-            HashSet::from(["a", "b"])];
+            HashSet::from(["a", "b"]),
+        ];
         let powerset = powerset(&set);
         assert_eq!(powerset.len(), expected.len());
         for set in powerset {

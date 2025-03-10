@@ -6,8 +6,8 @@ use super::{
     utils::{conjunction, disjunction},
     BinaryOp, UnaryOp, PLTL,
 };
-use crate::utils::{powerset, BitSet32};
 use crate::utils::BitSet;
+use crate::utils::{powerset, BitSet32};
 
 fn local_post_update(f: &PLTL, letter: BitSet32, past_st: &HashSet<PLTL>) -> PLTL {
     let first_part = f.rewrite_with_set(past_st);
@@ -208,4 +208,30 @@ pub fn after_function(f: &PLTL, letter: BitSet32) -> PLTL {
     let powerset = powerset(&psf_set);
     let result = disjunction(powerset.iter().map(|set| local_after(f, letter, set))).simplify();
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pltl::rewrite::rewrite_set_with_set;
+
+    use super::*;
+
+    #[test]
+    fn test_after_function() {
+        let (f, mut dict) = PLTL::from_string("(p U Y q) S (p R q)");
+        let ξ = PLTL::from_string_increment("(p U Y q) S (p R q)", &mut dict);
+        let psf0 = PLTL::from_string_increment("Y q", &mut dict);
+        let psf1 = f.clone();
+        let c_j = HashSet::from([psf0.clone()]);
+        let c_i = HashSet::from([psf0.clone(), psf1.clone()]);
+        let letter = 0b01; // {p}
+        let ξ_cj = ξ.rewrite_with_set(&c_j);
+        println!("ξ<cj>: {}", ξ_cj);
+        let ξ_cj_wc = ξ_cj.weaken_condition();
+        println!("wc(ξ<cj>): {}", ξ_cj_wc);
+        let c_i_cj = rewrite_set_with_set(&c_i, &c_j);
+        println!("ci<cj>: {{{}}}", c_i_cj.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "));
+        let result = local_after(&ξ_cj_wc, letter, &c_i_cj);
+        println!("{}", result);
+    }
 }
