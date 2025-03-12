@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLTL to DOT Converter</title>
+    <script src="https://unpkg.com/@viz-js/viz@3.2.4/lib/viz-standalone.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #results {
+            margin-top: 20px;
+        }
+        .graph-container {
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: white;
+            overflow: auto;
+        }
+        .graph-container svg {
+            max-width: 100%;
+            max-height: 600px;
+            display: block;
+            margin: 0 auto;
+        }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 10px 16px;
+            transition: 0.3s;
+            color: black;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #ccc;
+        }
+        .tabcontent {
+            display: none;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+        .tabcontent.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>PLTL to DOT Converter</h1>
+    
+    <div>
+        <label for="pltl-input">Enter PLTL Formula:</label>
+        <textarea id="pltl-input" placeholder="Example: a U b"></textarea>
+        <button id="convert-btn">Convert to DOT</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script type="module">
+        import init, { to_dots } from './pltl.js';
+
+        async function run() {
+            // Initialize WebAssembly module
+            await init();
+            
+            // Set up button click event
+            document.getElementById('convert-btn').addEventListener('click', async () => {
+                const pltlInput = document.getElementById('pltl-input').value.trim();
+                if (!pltlInput) {
+                    alert('Please enter a PLTL formula');
+                    return;
+                }
+                
+                try {
+                    // Call WebAssembly function to convert PLTL to DOT
+                    const dots = to_dots(pltlInput);
+                    await displayResults(dots);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error processing formula: ' + error.message);
+                }
+            });
+        }
+
+        async function displayResults(dots) {
+            console.log(dots);
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<h2>Generated Graphs:</h2>';
+            
+            if (dots.length === 0) {
+                resultsDiv.innerHTML += '<p>No DOT files were generated.</p>';
+                return;
+            }
+            
+            // Create tabs
+            const tabDiv = document.createElement('div');
+            tabDiv.className = 'tab';
+            
+            const tabNames = ['Guarantee Automata', 'Safety Automata', 'Stable Automata'];
+            
+            // Create tab buttons
+            for (let i = 0; i < dots.length; i++) {
+                const tabButton = document.createElement('button');
+                tabButton.className = 'tablinks';
+                tabButton.textContent = tabNames[i];
+                tabButton.onclick = function(evt) {
+                    openTab(evt, `tab-${i}`);
+                };
+                tabDiv.appendChild(tabButton);
+            }
+            
+            resultsDiv.appendChild(tabDiv);
+            
+            // Create tab content
+            for (let i = 0; i < dots.length; i++) {
+                const tabContent = document.createElement('div');
+                tabContent.id = `tab-${i}`;
+                tabContent.className = 'tabcontent';
+                
+                if (dots[i].length === 0) {
+                    tabContent.innerHTML = '<p>No graphs available in this category.</p>';
+                } else {
+                    for (let j = 0; j < dots[i].length; j++) {
+                        const dot = dots[i][j];
+                        const graphContainer = document.createElement('div');
+                        graphContainer.className = 'graph-container';
+                        
+                        // Render graph
+                        try {
+                            let viz = await Viz.instance();
+                            const svgString = await viz.renderString(dot, { engine: 'dot', format: 'svg' });
+                            graphContainer.innerHTML = svgString;
+                        } catch (error) {
+                            console.error('Error rendering graph:', error);
+                            graphContainer.innerHTML = `<p>Error rendering graph: ${error.message}</p>`;
+                        }
+                        
+                        tabContent.appendChild(document.createElement('h3')).textContent = `Graph ${j + 1}:`;
+                        tabContent.appendChild(graphContainer);
+                        tabContent.appendChild(document.createElement('hr'));
+                    }
+                }
+                
+                resultsDiv.appendChild(tabContent);
+            }
+            
+            // Open the first tab by default
+            document.getElementsByClassName('tablinks')[0].click();
+        }
+        
+        function openTab(evt, tabId) {
+            // Hide all tab content
+            const tabcontent = document.getElementsByClassName('tabcontent');
+            for (let i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].className = tabcontent[i].className.replace(' active', '');
+            }
+            
+            // Remove active state from all tab buttons
+            const tablinks = document.getElementsByClassName('tablinks');
+            for (let i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(' active', '');
+            }
+            
+            // Show current tab and add active state
+            document.getElementById(tabId).className += ' active';
+            evt.currentTarget.className += ' active';
+        }
+
+        run();
+    </script>
+</body>
+</html>
