@@ -1,13 +1,23 @@
 use std::collections::HashSet;
 
-use hoars::{AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName, AcceptanceSignature, Header, HeaderItem, HoaAutomaton, Property, StateConjunction};
-
 use crate::{
     pltl::{after_function::after_function, utils::disjunction, Annotated, BinaryOp, PLTL},
     utils::{character_to_label_expression, BitSet, BitSet32, Map, Set},
 };
 
-use super::{weakening_conditions, AutomataDump, Context};
+use super::{
+    hoa::{
+        self,
+        body::{Edge, Label},
+        format::{
+            AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
+            AcceptanceSignature, Property, StateConjunction,
+        },
+        header::{Header, HeaderItem},
+        AbstractLabelExpression, HoaAutomaton,
+    },
+    weakening_conditions, AutomataDump, Context,
+};
 
 pub fn transition(
     ctx: &Context,
@@ -70,24 +80,31 @@ fn dump(
         transitions.extend(letter_power_set.map(|letter| {
             let weakening_conditions_next_state =
                 weakening_conditions::transition(ctx, &weakening_conditions_state, letter);
-            let next_state = transition(
-                ctx,
-                u_set,
-                &state,
-                &weakening_conditions_next_state,
-                letter,
-            );
+            let next_state =
+                transition(ctx, u_set, &state, &weakening_conditions_next_state, letter);
             pending_states.push((next_state.clone(), weakening_conditions_next_state.clone()));
             (
-                (state.0.clone(), state.1.clone(), weakening_conditions_state.clone()),
+                (
+                    state.0.clone(),
+                    state.1.clone(),
+                    weakening_conditions_state.clone(),
+                ),
                 letter,
-                (next_state.0.clone(), next_state.1.clone(), weakening_conditions_next_state),
+                (
+                    next_state.0.clone(),
+                    next_state.1.clone(),
+                    weakening_conditions_next_state,
+                ),
             )
         }));
     }
 
     AutomataDump {
-        init_state: (init_state.0.clone(), init_state.1.clone(), weakening_conditions_init_state.to_vec()),
+        init_state: (
+            init_state.0.clone(),
+            init_state.1.clone(),
+            weakening_conditions_init_state.to_vec(),
+        ),
         transitions,
     }
 }
@@ -115,20 +132,32 @@ pub fn dump_hoa(
         let edges = same_from.iter().map(|(_, letter, to)| {
             let next_id = state_id_map.len() as u32;
             let to_id = *state_id_map.entry(to.clone()).or_insert_with(|| next_id);
-            hoars::Edge::from_parts(
-                hoars::Label(hoars::AbstractLabelExpression::Conjunction(
+            Edge::from_parts(
+                Label(AbstractLabelExpression::Conjunction(
                     character_to_label_expression(*letter, ctx.atom_map.len()),
                 )),
                 StateConjunction::singleton(to_id),
                 AcceptanceSignature::empty(),
             )
         });
-        states.push(hoars::State::from_parts(
+        states.push(hoa::State::from_parts(
             from_id,
+            Some(format!(
+                "<{}, {}>, <{}>",
+                from.0.format_with_atom_names(&ctx.atom_map),
+                from.1.format_with_atom_names(&ctx.atom_map),
+                from.2
+                    .iter()
+                    .map(|a| a
+                        .to_pltl(&ctx.psf_context)
+                        .format_with_atom_names(&ctx.atom_map))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
             if from.1 == PLTL::Bottom {
-                Some("0".to_string())
+                AcceptanceSignature(vec![0])
             } else {
-                None
+                AcceptanceSignature::empty()
             },
             edges.collect(),
         ));
@@ -163,7 +192,6 @@ pub fn initial_state(ctx: &Context, u_set: u32) -> (PLTL, PLTL) {
 
 #[cfg(test)]
 mod tests {
-    use hoars::output::to_hoa;
     use super::*;
 
     #[test]
@@ -171,16 +199,9 @@ mod tests {
         let (ltl, atom_map) = PLTL::from_string("G p | F q");
         let ltl = ltl.normal_form();
         let ctx = Context::new(&ltl, atom_map);
-        println!("{}", ctx);
         let u_set = 0;
         let init_state = initial_state(&ctx, u_set);
         let weakening_conditions_init_state = vec![Annotated::Top];
-        let hoa = dump_hoa(
-            &ctx,
-            u_set,
-            &init_state,
-            &weakening_conditions_init_state,
-        );
-        println!("{}", to_hoa(&hoa));
+        let hoa = dump_hoa(&ctx, u_set, &init_state, &weakening_conditions_init_state);
     }
 }

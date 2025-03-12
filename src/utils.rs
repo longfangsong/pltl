@@ -1,9 +1,9 @@
 use bimap::BiHashMap;
 use fxhash::FxBuildHasher;
-use hoars::AbstractLabelExpression;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 use std::ops::RangeInclusive;
+use crate::automata::hoa::AbstractLabelExpression;
 
 pub type Map<K, V> = HashMap<K, V, FxBuildHasher>;
 

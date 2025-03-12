@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 
-use hoars::{AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName, AcceptanceSignature, Header, HeaderItem, HoaAutomaton, Property, StateConjunction};
-
-use super::{weakening_conditions, AutomataDump, Context};
+use super::{hoa::{self, body::{Edge, Label}, format::{AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName, AcceptanceSignature, Property, StateConjunction}, header::{Header, HeaderItem}, AbstractLabelExpression, HoaAutomaton}, weakening_conditions, AutomataDump, Context};
 use crate::{
     pltl::{
         after_function::after_function, utils::disjunction, Annotated, BinaryOp, UnaryOp, PLTL,
@@ -125,20 +123,21 @@ pub fn dump_hoa(
         let edges = same_from.iter().map(|(_, letter, to)| {
             let next_id = state_id_map.len() as u32;
             let to_id = *state_id_map.entry(to.clone()).or_insert_with(|| next_id);
-            hoars::Edge::from_parts(
-                hoars::Label(hoars::AbstractLabelExpression::Conjunction(
+            Edge::from_parts(
+                Label(AbstractLabelExpression::Conjunction(
                     character_to_label_expression(*letter, ctx.atom_map.len()),
                 )),
                 StateConjunction::singleton(to_id),
                 AcceptanceSignature::empty(),
             )
         });
-        states.push(hoars::State::from_parts(
+        states.push(hoa::State::from_parts(
             from_id,
+            Some(format!("{}, <{}>", from.0.format_with_atom_names(&ctx.atom_map), from.1.iter().map(|a| a.to_pltl(&ctx.psf_context).format_with_atom_names(&ctx.atom_map)).collect::<Vec<_>>().join(", "))),
             if from.0 == PLTL::Bottom {
-                Some("0".to_string())
+                AcceptanceSignature(vec![0])
             } else {
-                None
+                AcceptanceSignature::empty()
             },
             edges.collect(),
         ));
@@ -171,7 +170,8 @@ pub fn initial_state(ctx: &Context, v_item_id: u32, u_set: u32) -> PLTL {
 
 #[cfg(test)]
 mod tests {
-    use hoars::output::to_hoa;
+    use crate::automata::hoa::output::to_hoa;
+
     use super::*;
 
     #[test]
@@ -179,7 +179,6 @@ mod tests {
         let (ltl, atom_map) = PLTL::from_string("G p | F q");
         let ltl = ltl.normal_form();
         let ctx = Context::new(&ltl, atom_map);
-        println!("{}", ctx);
         let v_item_id = 0;
         let u_set = 0;
         let init_state = initial_state(&ctx, v_item_id, u_set);

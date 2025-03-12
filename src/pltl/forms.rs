@@ -1,3 +1,5 @@
+use rayon::result;
+
 use super::{BinaryOp, UnaryOp, PLTL};
 
 impl PLTL {
@@ -267,8 +269,7 @@ impl PLTL {
 
 impl PLTL {
     fn simplify_until_simplest(&self) -> (PLTL, bool) {
-        // println!("simplify_until_simplest: {}", self);
-        match self {
+        let result = match self {
             PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => (self.clone(), false),
             PLTL::Unary(UnaryOp::Not, box PLTL::Bottom) => (PLTL::Top, true),
             PLTL::Unary(UnaryOp::Not, box PLTL::Top) => (PLTL::Bottom, true),
@@ -317,7 +318,25 @@ impl PLTL {
                 BinaryOp::And,
                 box lhs,
                 box PLTL::Binary(BinaryOp::And, box rlhs, box rhs),
+            ) if rhs < lhs => {
+                let (rhs, _) = rhs.simplify_until_simplest();
+                let (rlhs, _) = rlhs.simplify_until_simplest();
+                let (lhs, _) = lhs.simplify_until_simplest();
+                (
+                    PLTL::new_binary(
+                        BinaryOp::And,
+                        rhs.clone(),
+                        PLTL::new_binary(BinaryOp::And, lhs.clone(), rlhs.clone()),
+                    ),
+                    true,
+                )
+            }
+            PLTL::Binary(
+                BinaryOp::And,
+                box lhs,
+                box PLTL::Binary(BinaryOp::And, box rlhs, box rhs),
             ) if rlhs < lhs => {
+                let (lhs, _) = lhs.simplify_until_simplest();
                 let (rlhs, _) = rlhs.simplify_until_simplest();
                 let (rhs, _) = rhs.simplify_until_simplest();
                 (
@@ -332,8 +351,9 @@ impl PLTL {
             PLTL::Binary(BinaryOp::And, box lhs, box rhs) if rhs < lhs => {
                 let (rhs, _) = rhs.simplify_until_simplest();
                 let (lhs, _) = lhs.simplify_until_simplest();
+                let result = PLTL::new_binary(BinaryOp::And, rhs, lhs);
                 (
-                    PLTL::new_binary(BinaryOp::And, rhs.clone(), lhs.clone()),
+                    result,
                     true,
                 )
             }
@@ -375,14 +395,32 @@ impl PLTL {
                 BinaryOp::Or,
                 box lhs,
                 box PLTL::Binary(BinaryOp::Or, box rlhs, box rhs),
+            ) if rhs < lhs => {
+                let (rhs, _) = rhs.simplify_until_simplest();
+                let (rlhs, _) = rlhs.simplify_until_simplest();
+                let (lhs, _) = lhs.simplify_until_simplest();
+                (
+                    PLTL::new_binary(
+                        BinaryOp::Or,
+                        rhs.clone(),
+                        PLTL::new_binary(BinaryOp::Or, rlhs.clone(), lhs.clone()),
+                    ),
+                    true,
+                )
+            }
+            PLTL::Binary(
+                BinaryOp::Or,
+                box lhs,
+                box PLTL::Binary(BinaryOp::Or, box rlhs, box rhs),
             ) if rlhs < lhs => {
+                let (lhs, _) = lhs.simplify_until_simplest();
                 let (rlhs, _) = rlhs.simplify_until_simplest();
                 let (rhs, _) = rhs.simplify_until_simplest();
                 (
                     PLTL::new_binary(
                         BinaryOp::Or,
-                        rlhs.clone(),
-                        PLTL::new_binary(BinaryOp::Or, lhs.clone(), rhs.clone()),
+                        rlhs,
+                        PLTL::new_binary(BinaryOp::Or, lhs, rhs),
                     ),
                     true,
                 )
@@ -450,7 +488,8 @@ impl PLTL {
                     changed_lhs || changed_rhs,
                 )
             }
-        }
+        };
+        result
     }
 
     pub fn simplify(&self) -> PLTL {

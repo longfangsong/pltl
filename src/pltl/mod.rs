@@ -14,7 +14,6 @@ pub use past_subformula::{PastSubformulaSet, PastSubformularSetContext};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use crate::utils::BiMap;
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]

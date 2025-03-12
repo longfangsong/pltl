@@ -1,5 +1,5 @@
 use clap::{ArgGroup, Parser};
-use hoars::output::to_hoa;
+use pltl::automata::hoa::output::to_hoa;
 use pltl::automata::{AllSubAutomatas, Context, State};
 use pltl::pltl::PLTL;
 use std::fs::{self, File};
@@ -57,16 +57,16 @@ fn main() -> io::Result<()> {
     let (pltl_formula, atom_map) = PLTL::from_string(&input);
     let pltl_formula = pltl_formula.normal_form();
     let context = Context::new(&pltl_formula, atom_map);
-    
+
     if args.dump_sub {
         if let Some(output_dir) = &args.fileout {
             if !Path::new(output_dir).exists() {
                 fs::create_dir_all(output_dir)?;
             }
-            
+
             let all_sub_automatas = AllSubAutomatas::new(&context);
             all_sub_automatas.to_files(&context, output_dir);
-            
+
             return Ok(());
         } else {
             return Err(io::Error::new(
@@ -74,25 +74,27 @@ fn main() -> io::Result<()> {
                 "Must specify output directory with -O",
             ));
         }
-    }
-    
-    let initial_state = State::new(&context);
-
-    let automaton =
-        initial_state.dump_automata(&context, context.atom_map.len());
-
-    let hoa_automaton = automaton.dump_hoa(&format!("\"{}\"", pltl_formula.format_with_atom_names(&context.atom_map)));
-    let output = to_hoa(&hoa_automaton);
-
-    if let Some(file_path) = args.fileout {
-        if file_path == "-" {
-            io::stdout().write_all(output.as_bytes())?;
-        } else {
-            let mut file = File::create(file_path)?;
-            file.write_all(output.as_bytes())?;
-        }
     } else {
-        io::stdout().write_all(output.as_bytes())?;
+        let initial_state = State::new(&context);
+
+        let automaton = initial_state.dump_automata(&context, context.atom_map.len());
+
+        let hoa_automaton = automaton.dump_hoa(&format!(
+            "\"{}\"",
+            pltl_formula.format_with_atom_names(&context.atom_map)
+        ));
+        let output = to_hoa(&hoa_automaton);
+
+        if let Some(file_path) = args.fileout {
+            if file_path == "-" {
+                io::stdout().write_all(output.as_bytes())?;
+            } else {
+                let mut file = File::create(file_path)?;
+                file.write_all(output.as_bytes())?;
+            }
+        } else {
+            io::stdout().write_all(output.as_bytes())?;
+        }
     }
 
     Ok(())

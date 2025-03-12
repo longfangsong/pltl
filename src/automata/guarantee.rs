@@ -1,14 +1,9 @@
-use std::{collections::HashSet, iter};
+use std::collections::HashSet;
 
-use hoars::{
-    AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName, AcceptanceSignature,
-    Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
-};
-use itertools::Itertools;
 
-use super::{AutomataDump, Context};
+use super::{hoa::{self, body::{Edge, Label}, format::{AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName, AcceptanceSignature, Property, StateConjunction}, header::{Header, HeaderItem}, AbstractLabelExpression, HoaAutomaton}, AutomataDump, Context};
 use crate::{
-    automata::{weakening_conditions, AutomataRecord},
+    automata::weakening_conditions,
     pltl::{
         after_function::after_function, utils::disjunction, Annotated, BinaryOp, UnaryOp, PLTL,
     },
@@ -130,20 +125,21 @@ pub fn dump_hoa(
         let edges = same_from.iter().map(|(_, letter, to)| {
             let next_id = state_id_map.len() as u32;
             let to_id = *state_id_map.entry(to.clone()).or_insert_with(|| next_id);
-            hoars::Edge::from_parts(
-                hoars::Label(hoars::AbstractLabelExpression::Conjunction(
+            Edge::from_parts(
+                Label(AbstractLabelExpression::Conjunction(
                     character_to_label_expression(*letter, ctx.atom_map.len()),
                 )),
                 StateConjunction::singleton(to_id),
                 AcceptanceSignature::empty(),
             )
         });
-        states.push(hoars::State::from_parts(
+        states.push(hoa::State::from_parts(
             from_id,
+            Some(format!("{}, <{}>", from.0.format_with_atom_names(&ctx.atom_map), from.1.iter().map(|a| a.to_pltl(&ctx.psf_context).format_with_atom_names(&ctx.atom_map)).collect::<Vec<_>>().join(", "))),
             if from.0 == PLTL::Top {
-                Some("0".to_string())
+                AcceptanceSignature(vec![0])
             } else {
-                None
+                AcceptanceSignature::empty()
             },
             edges.collect(),
         ));

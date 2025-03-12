@@ -2,6 +2,7 @@ mod guarantee;
 mod safety;
 mod stable;
 mod weakening_conditions;
+pub mod hoa;
 
 use crate::utils::Map;
 use crate::{
@@ -9,11 +10,11 @@ use crate::{
     utils::{BitSet, BitSet32},
 };
 use guarantee::GuaranteeyStateGivenN;
-use hoars::output::to_hoa;
-use hoars::{
-    AbstractLabelExpression, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
-    AcceptanceSignature, Edge, Header, HeaderItem, HoaAutomaton, Property, StateConjunction,
-};
+use hoa::body::{Edge, Label};
+use hoa::format::{AcceptanceCondition, AcceptanceInfo, AcceptanceName, AcceptanceSignature, Property, StateConjunction};
+use hoa::header::{Header, HeaderItem};
+use hoa::output::to_hoa;
+use hoa::{AbstractLabelExpression, HoaAutomaton};
 use itertools::Itertools;
 use safety::SafetyStateGivenM;
 use std::fs::File;
@@ -338,7 +339,7 @@ impl DumpedAutomata {
                                 })
                                 .collect::<Vec<_>>();
                             Edge::from_parts(
-                                hoars::Label(hoars::AbstractLabelExpression::Conjunction(
+                                Label(hoa::AbstractLabelExpression::Conjunction(
                                     label_characters,
                                 )),
                                 StateConjunction::singleton(self.state_id_map[next_state] as _),
@@ -350,30 +351,25 @@ impl DumpedAutomata {
                         .iter()
                         .enumerate()
                         .map(|(i, (fin, inf))| {
-                            let mut result = "".to_string();
+                            let mut result = Vec::new();
                             if fin.contains(state_id) {
-                                result += &(i * 2).to_string();
+                                result.push(i as u32 * 2);
                             };
-                            result += " ";
                             if inf.contains(state_id) {
-                                result += &(i * 2 + 1).to_string();
+                                result.push(i as u32 * 2 + 1);
                             };
                             result
                         })
                         .filter(|it| !it.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    hoars::State::from_parts(
+                        .flatten();
+                    hoa::State::from_parts(
                         *state_id as _,
-                        if state_label.is_empty() {
-                            None
-                        } else {
-                            Some(state_label)
-                        },
+                        None,
+                        AcceptanceSignature(state_label.collect()),
                         edges,
                     )
                 })
-                .collect::<Vec<hoars::State>>()
+                .collect::<Vec<hoa::State>>()
                 .into(),
         );
         result
@@ -537,7 +533,6 @@ impl State {
                     &next_weakening_condition,
                     letter,
                 );
-                // println!("{m_id} {n_id}: {}", stable_state.1);
                 new_n_result.push(EventuallyGloballyStateGivenMN {
                     guarantee_state: new_eventually_states,
                     safety_state: new_globally_states,
@@ -577,11 +572,11 @@ impl State {
 #[derive(Debug, Clone)]
 pub struct AllSubAutomatas {
     // u_item_id, v_set -> automata
-    guarantee_automatas: Map<(u32, BitSet32), HoaAutomaton>,
+    pub guarantee_automatas: Map<(u32, BitSet32), HoaAutomaton>,
     // v_item_id, u_set -> automata
-    safety_automatas: Map<(u32, BitSet32), HoaAutomaton>,
+    pub safety_automatas: Map<(u32, BitSet32), HoaAutomaton>,
     // u_set -> automata
-    stable_automatas: Vec<HoaAutomaton>,
+    pub stable_automatas: Vec<HoaAutomaton>,
 }
 
 impl AllSubAutomatas {
@@ -595,7 +590,7 @@ impl AllSubAutomatas {
         for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
             for n_id in 0u32..(1 << ctx.v_type_subformulas.len()) {
                 for u_item in m_id.iter() {
-                    let guarantee_init_state = guarantee::initial_state(&ctx, u_item, n_id);
+                    let guarantee_init_state = guarantee::initial_state(ctx, u_item, n_id);
                     let guarantee_automata = guarantee::dump_hoa(
                         ctx,
                         u_item,
@@ -606,7 +601,7 @@ impl AllSubAutomatas {
                     guarantee_automatas.insert((u_item, n_id), guarantee_automata);
                 }
                 for v_item in n_id.iter() {
-                    let safety_init_state = safety::initial_state(&ctx, v_item, m_id);
+                    let safety_init_state = safety::initial_state(ctx, v_item, m_id);
                     let safety_automata = safety::dump_hoa(
                         ctx,
                         v_item,
@@ -617,7 +612,7 @@ impl AllSubAutomatas {
                     safety_automatas.insert((v_item, m_id), safety_automata);
                 }
             }
-            let stable_init_state = stable::initial_state(&ctx, m_id);
+            let stable_init_state = stable::initial_state(ctx, m_id);
             stable_automatas.push(stable::dump_hoa(
                 ctx,
                 m_id,
@@ -637,19 +632,19 @@ impl AllSubAutomatas {
             let file_name = format!("guarantee_{u_item_id}_0b{:b}.hoa", v_set);
             let file_path = Path::new(path).join(&file_name);
             let mut file = File::create(file_path).unwrap();
-            write!(file, "{}", to_hoa(&automata)).unwrap();
+            write!(file, "{}", to_hoa(automata)).unwrap();
         }
         for ((v_item_id, u_set), automata) in &self.safety_automatas {
             let file_name = format!("safety_0b{:b}_{v_item_id}.hoa", u_set);
             let file_path = Path::new(path).join(&file_name);
             let mut file = File::create(file_path).unwrap();
-            write!(file, "{}", to_hoa(&automata)).unwrap();
+            write!(file, "{}", to_hoa(automata)).unwrap();
         }
         for (u_set, automata) in self.stable_automatas.iter().enumerate() {
             let file_name = format!("stable_0b{:b}.hoa", u_set);
             let file_path = Path::new(path).join(&file_name);
             let mut file = File::create(file_path).unwrap();
-            write!(file, "{}", to_hoa(&automata)).unwrap();
+            write!(file, "{}", to_hoa(automata)).unwrap();
         }
         let mut makefile_content = String::new();
         for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
@@ -717,7 +712,7 @@ impl AllSubAutomatas {
                 makefile_content += "\n";
             }
         }
-        let file_name = format!("result.hoa");
+        let file_name = "result.hoa".to_string();
         makefile_content += &format!("{}: ", file_name);
         for m_id in 0u32..(1 << ctx.u_type_subformulas.len()) {
             for n_id in 0u32..(1 << ctx.v_type_subformulas.len()) {
@@ -738,5 +733,27 @@ impl AllSubAutomatas {
         let makefile_path = Path::new(path).join("Makefile");
         let mut file = File::create(makefile_path).unwrap();
         write!(file, "{}", makefile_content).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hoars::output::to_dot;
+
+    use super::*;
+    
+    #[test]
+    fn test_to_files() {
+        let (ltl, atom_map) = PLTL::from_string("G(a U b)");
+        let ltl = ltl.normal_form();
+        println!("{}", ltl);
+        let ctx = Context::new(&ltl, atom_map);
+        println!("{}", ctx);
+        let automatas = AllSubAutomatas::new(&ctx);
+        println!("{:?}", automatas.guarantee_automatas.keys().collect::<Vec<_>>());
+        println!("{:?}", automatas.safety_automatas.keys().collect::<Vec<_>>());
+        println!("{:?}", automatas.stable_automatas.len());
+        let automata = &automatas.stable_automatas[1];
+        println!("{}", to_dot(&automata));
     }
 }
