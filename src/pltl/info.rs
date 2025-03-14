@@ -85,11 +85,25 @@ impl PLTL {
         }
     }
 
+    pub fn should_in_u_set(&self) -> bool {
+        match self {
+            PLTL::Binary(op, _, _) => op.is_u_type(),
+            _ => false,
+        }
+    }
+
     pub fn is_v_type(&self) -> bool {
         match self {
             PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => false,
             PLTL::Unary(op, _) => op.is_v_type(),
             PLTL::Binary(op, _, _) => op.is_v_type(),
+        }
+    }
+
+    pub fn should_in_v_set(&self) -> bool {
+        match self {
+            PLTL::Binary(op, _, _) => op.is_v_type(),
+            _ => false,
         }
     }
 
@@ -101,17 +115,17 @@ impl PLTL {
         }
     }
 
-    pub fn u_type_subformulas(&self) -> Vec<&PLTL> {
+    pub fn u_set(&self) -> Vec<&PLTL> {
         self.subformulas()
             .into_iter()
-            .filter(|f| f.is_u_type())
+            .filter(|f| f.should_in_u_set())
             .collect()
     }
 
-    pub fn v_type_subformulas(&self) -> Vec<&PLTL> {
+    pub fn v_set(&self) -> Vec<&PLTL> {
         self.subformulas()
             .into_iter()
-            .filter(|f| f.is_v_type())
+            .filter(|f| f.should_in_v_set())
             .collect()
     }
 

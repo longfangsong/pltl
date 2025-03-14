@@ -1,5 +1,3 @@
-use rayon::result;
-
 use super::{BinaryOp, UnaryOp, PLTL};
 
 impl PLTL {
@@ -187,83 +185,6 @@ impl PLTL {
             }
             PLTL::Binary(op, lhs, rhs) => PLTL::new_binary(*op, lhs.flatten(), rhs.flatten()),
         }
-    }
-
-    fn least_operators_on_no_FGOH(self) -> Self {
-        match self {
-            PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => self,
-            PLTL::Unary(UnaryOp::WeakYesterday, box content) => PLTL::new_binary(
-                BinaryOp::Or,
-                PLTL::new_unary(UnaryOp::Yesterday, content.least_operators_on_no_FGOH()),
-                PLTL::new_unary(UnaryOp::Not, PLTL::new_unary(UnaryOp::Yesterday, PLTL::Top)),
-            ),
-            PLTL::Binary(BinaryOp::WeakUntil, box lhs, box rhs) => {
-                let lhs = lhs.least_operators_on_no_FGOH();
-                let rhs = rhs.least_operators_on_no_FGOH();
-                PLTL::new_binary(
-                    BinaryOp::Or,
-                    PLTL::new_binary(BinaryOp::Until, lhs.clone(), rhs),
-                    PLTL::new_unary(UnaryOp::Globally, lhs).least_operators(),
-                )
-            }
-            PLTL::Binary(BinaryOp::WeakSince, box lhs, box rhs) => {
-                let lhs = lhs.least_operators_on_no_FGOH();
-                let rhs = rhs.least_operators_on_no_FGOH();
-                PLTL::new_binary(
-                    BinaryOp::Or,
-                    PLTL::new_binary(BinaryOp::Since, lhs.clone(), rhs),
-                    PLTL::new_unary(UnaryOp::Historically, lhs).least_operators(),
-                )
-            }
-            PLTL::Binary(BinaryOp::MightyRelease, box lhs, box rhs) => {
-                let lhs = lhs.least_operators_on_no_FGOH();
-                let rhs = rhs.least_operators_on_no_FGOH();
-                PLTL::new_binary(
-                    BinaryOp::Until,
-                    rhs.clone(),
-                    PLTL::new_binary(BinaryOp::And, lhs, rhs),
-                )
-            }
-            PLTL::Binary(BinaryOp::Before, box lhs, box rhs) => {
-                let lhs = lhs.least_operators_on_no_FGOH();
-                let rhs = rhs.least_operators_on_no_FGOH();
-                PLTL::new_binary(
-                    BinaryOp::Since,
-                    rhs.clone(),
-                    PLTL::new_binary(BinaryOp::And, lhs, rhs),
-                )
-            }
-            PLTL::Binary(BinaryOp::Release, box lhs, box rhs) => {
-                let lhs = lhs.least_operators_on_no_FGOH();
-                let rhs = rhs.least_operators_on_no_FGOH();
-                PLTL::new_binary(
-                    BinaryOp::WeakUntil,
-                    rhs.clone(),
-                    PLTL::new_binary(BinaryOp::And, lhs, rhs),
-                )
-                .least_operators_on_no_FGOH()
-            }
-            PLTL::Binary(BinaryOp::WeakBefore, box lhs, box rhs) => {
-                let lhs = lhs.least_operators_on_no_FGOH();
-                let rhs = rhs.least_operators_on_no_FGOH();
-                PLTL::new_binary(
-                    BinaryOp::WeakSince,
-                    rhs.clone(),
-                    PLTL::new_binary(BinaryOp::And, lhs, rhs),
-                )
-                .least_operators_on_no_FGOH()
-            }
-            PLTL::Unary(op, content) => PLTL::new_unary(op, content.least_operators_on_no_FGOH()),
-            PLTL::Binary(op, lhs, rhs) => PLTL::new_binary(
-                op,
-                lhs.least_operators_on_no_FGOH(),
-                rhs.least_operators_on_no_FGOH(),
-            ),
-        }
-    }
-
-    pub fn least_operators(&self) -> Self {
-        self.remove_FGOH().least_operators_on_no_FGOH()
     }
 }
 

@@ -198,23 +198,25 @@ mod tests {
     //     println!("{}", to_hoa(&hoa));
     // }
 
-    // #[test]
-    // fn test_dump_hoa_2() {
-    //     let (ltl, atom_map) = PLTL::from_string("F (p & q)");
-    //     let ltl = ltl.normal_form();
-    //     let ctx = Context::new(&ltl, atom_map);
-    //     println!("{}", ctx);
-    //     let u_item_id = 0;
-    //     let v_set = 0;
-    //     let init_state = initial_state(&ctx, u_item_id, v_set);
-    //     let weakening_conditions_init_state = vec![Annotated::Top];
-    //     let hoa = dump_hoa(
-    //         &ctx,
-    //         u_item_id,
-    //         v_set,
-    //         &init_state,
-    //         &weakening_conditions_init_state,
-    //     );
-    //     println!("{}", to_hoa(&hoa));
-    // }
+    use crate::{automata::Context, pltl::PLTL};
+
+    #[test]
+    fn test_dump_hoa_2() {
+        let (ltl, atom_map) = PLTL::from_string("X p");
+        let ltl = ltl.normal_form();
+        let ctx = Context::new(&ltl, atom_map);
+        println!("{}", ctx);
+        // let u_item_id = 0;
+        // let v_set = 0;
+        // let init_state = initial_state(&ctx, u_item_id, v_set);
+        // let weakening_conditions_init_state = vec![Annotated::Top];
+        // let hoa = dump_hoa(
+        //     &ctx,
+        //     u_item_id,
+        //     v_set,
+        //     &init_state,
+        //     &weakening_conditions_init_state,
+        // );
+        // println!("{}", to_hoa(&hoa));
+    }
 }

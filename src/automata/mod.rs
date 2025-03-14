@@ -120,13 +120,13 @@ impl<'a> Context<'a> {
         let init_c = Self::calculate_init_c(&psf_context, &c_sets);
         let u_type_subformulas = psf_context
             .origin
-            .u_type_subformulas()
+            .u_set()
             .into_iter()
             .dedup()
             .collect();
         let v_type_subformulas = psf_context
             .origin
-            .v_type_subformulas()
+            .v_set()
             .into_iter()
             .dedup()
             .collect();
@@ -738,7 +738,8 @@ impl AllSubAutomatas {
 
 #[cfg(test)]
 mod tests {
-    use hoars::output::to_dot;
+
+    use crate::automata::hoa::output::to_dot;
 
     use super::*;
     
