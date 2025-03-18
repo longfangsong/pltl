@@ -22,7 +22,7 @@ pub fn transition(
         let mut result = Vec::with_capacity(ctx.c_sets.len());
         for (c, bed_state) in ctx.c_sets.iter().zip(bed_next_state.iter()) {
             let u_item = ctx.u_type_subformulas[u_item_id as usize];
-            let rewrite_u_with_c = u_item.u_rewrite(&c.to_pltl_set(&ctx.psf_context));
+            let rewrite_u_with_c = u_item.rewrite_with_set(&c.to_pltl_set(&ctx.psf_context));
             let mut rewrite_v_set_with_c = HashSet::new();
             for v_item in v_set.iter().map(|v| ctx.v_type_subformulas[v as usize]) {
                 let annotated = Annotated::from_pltl(v_item, &ctx.psf_context);
@@ -176,7 +176,7 @@ mod tests {
 
     // use crate::pltl::UnaryOp;
 
-    // use super::*;
+    use super::*;
 
     // #[test]
     // fn test_dump_hoa() {
@@ -198,25 +198,25 @@ mod tests {
     //     println!("{}", to_hoa(&hoa));
     // }
 
-    use crate::{automata::Context, pltl::PLTL};
+    use crate::{automata::{hoa::output::to_hoa, Context}, pltl::PLTL};
 
     #[test]
     fn test_dump_hoa_2() {
-        let (ltl, atom_map) = PLTL::from_string("X p");
+        let (ltl, atom_map) = PLTL::from_string("F (a S b)");
         let ltl = ltl.normal_form();
         let ctx = Context::new(&ltl, atom_map);
-        println!("{}", ctx);
-        // let u_item_id = 0;
-        // let v_set = 0;
-        // let init_state = initial_state(&ctx, u_item_id, v_set);
-        // let weakening_conditions_init_state = vec![Annotated::Top];
-        // let hoa = dump_hoa(
-        //     &ctx,
-        //     u_item_id,
-        //     v_set,
-        //     &init_state,
-        //     &weakening_conditions_init_state,
-        // );
-        // println!("{}", to_hoa(&hoa));
+        println!("{ltl}\n{}", ctx);
+        let u_item_id = 0;
+        let v_set = 0;
+        let init_state = initial_state(&ctx, u_item_id, v_set);
+        let weakening_conditions_init_state = vec![Annotated::Top, Annotated::Bottom];
+        let hoa = dump_hoa(
+            &ctx,
+            u_item_id,
+            v_set,
+            &init_state,
+            &weakening_conditions_init_state,
+        );
+        println!("{}", to_hoa(&hoa));
     }
 }

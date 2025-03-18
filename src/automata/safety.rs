@@ -20,7 +20,7 @@ pub fn transition(
         let mut result = Vec::with_capacity(ctx.c_sets.len());
         for (c, bed_state) in ctx.c_sets.iter().zip(bed_next_state.iter()) {
             let v_item = ctx.v_type_subformulas[v_item_id as usize];
-            let rewrite_v_with_c = v_item.v_rewrite(&c.to_pltl_set(&ctx.psf_context));
+            let rewrite_v_with_c = v_item.rewrite_with_set(&c.to_pltl_set(&ctx.psf_context));
             let mut rewrite_u_set_with_c = HashSet::new();
             for u_item in u_set.iter().map(|u| ctx.u_type_subformulas[u as usize]) {
                 let annotated = Annotated::from_pltl(u_item, &ctx.psf_context);
