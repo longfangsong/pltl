@@ -65,7 +65,7 @@ impl Annotated {
         Annotated::Unary(op, Box::new(arg))
     }
 
-    /// Note the pltl must in the context
+    /// Note the pltl must in the context in it's **original** form
     pub(crate) fn from_pltl(pltl: &PLTL, context: &PastSubformularSetContext) -> Self {
         match pltl {
             PLTL::Top => Annotated::Top,
