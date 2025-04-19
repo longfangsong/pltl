@@ -3,6 +3,7 @@ use fxhash::FxBuildHasher;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
 use std::ops::RangeInclusive;
+
 use crate::automata::hoa::AbstractLabelExpression;
 
 pub type Map<K, V> = HashMap<K, V, FxBuildHasher>;
@@ -21,7 +22,7 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
         Self: 'a;
 
     fn full_with_size(bits: usize) -> Self;
-    fn power_set(size: usize) -> RangeInclusive<u32>;
+    fn power_set_of_size(size: usize) -> RangeInclusive<u32>;
     fn get(&self, index: u32) -> bool;
     fn set_bit(&mut self, index: u32);
     fn clear_bit(&mut self, index: u32);
@@ -47,8 +48,11 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
     fn len(&self) -> u32 {
         self.iter().count() as u32
     }
-
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     fn into_par_iter(self) -> impl ParallelIterator<Item = u32>;
+    fn sub_power_set(&self) -> Vec<Self>;
 }
 
 pub type BitSet32 = u32;
@@ -106,7 +110,7 @@ impl BitSet for BitSet32 {
         }
     }
 
-    fn power_set(size: usize) -> RangeInclusive<u32> {
+    fn power_set_of_size(size: usize) -> RangeInclusive<u32> {
         0..=Self::full_with_size(size)
     }
 
@@ -165,11 +169,25 @@ impl BitSet for BitSet32 {
             max_index,
         }
     }
+
+    fn is_empty(&self) -> bool {
+        *self == 0
+    }
+
+    fn sub_power_set(&self) -> Vec<Self> {
+        let mut result = Vec::new();
+        for i in 0..=*self {
+            if i.is_subset(self) {
+                result.push(i);
+            }
+        }
+        result
+    }
 }
 
-pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(origin: &HashSet<T>) -> Vec<HashSet<T>> {
-    let mut result = vec![HashSet::new()];
-    for elem in origin.iter() {
+pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(origin: impl IntoIterator<Item = T>) -> Vec<Set<T>> {
+    let mut result = vec![Set::default()];
+    for elem in origin {
         let mut new_subsets = Vec::new();
         for subset in &result {
             let mut new_subset = subset.clone();
@@ -197,23 +215,39 @@ pub fn character_to_label_expression(letter: BitSet32, atom_count: usize) -> Vec
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::*;
 
     #[test]
     fn test_powerset() {
-        let set = HashSet::from(["a", "b"]);
+        let set = Set::from_iter(["a", "b"]);
         let expected = [
-            HashSet::new(),
-            HashSet::from(["a"]),
-            HashSet::from(["b"]),
-            HashSet::from(["a", "b"]),
+            Set::default(),
+            Set::from_iter(["a"]),
+            Set::from_iter(["b"]),
+            Set::from_iter(["a", "b"]),
         ];
-        let powerset = powerset(&set);
+        let powerset = powerset(set);
         assert_eq!(powerset.len(), expected.len());
         for set in powerset {
             assert!(expected.contains(&set));
         }
+    }
+
+    #[test]
+    fn test_sub_power_set() {
+        let set = 0b10;
+        println!("set: 0b{:b}", set);
+        // let expected = [
+        //     BitSet32::full_with_size(0),
+        //     BitSet32::full_with_size(1),
+        // ];
+        let sub_power_set = set.sub_power_set();
+        for set in sub_power_set {
+            println!("set: 0b{:b}", set);
+        }
+        // assert_eq!(sub_power_set.len(), expected.len());
+        // for set in sub_power_set {
+        //     assert!(expected.contains(&set));
+        // }
     }
 }

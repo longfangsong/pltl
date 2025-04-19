@@ -7,10 +7,15 @@ use nom::{
     combinator::{map, recognize},
     multi::{fold_many1, many0, many1},
     sequence::{delimited, pair, preceded},
-    IResult, Parser,
+    Finish, IResult, Parser,
 };
 
 use super::{BinaryOp, UnaryOp};
+
+#[derive(Debug, Clone)]
+pub struct Error {
+    offset: usize,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub(super) enum PLTLParseTree {
@@ -81,10 +86,10 @@ fn temporal_binary_op(input: &str) -> IResult<&str, BinaryOp> {
         ("~S", BinaryOp::WeakSince),
         ("\\widetilde{S}", BinaryOp::WeakSince),
         ("M", BinaryOp::MightyRelease),
-        ("B", BinaryOp::Before),
+        ("B", BinaryOp::BackTo),
         ("R", BinaryOp::Release),
-        ("~B", BinaryOp::WeakBefore),
-        ("\\widetilde{B}", BinaryOp::WeakBefore),
+        ("~B", BinaryOp::WeakBackTo),
+        ("\\widetilde{B}", BinaryOp::WeakBackTo),
     ];
 
     for (symbol, op) in OPS.iter() {
@@ -280,19 +285,31 @@ pub fn parse(input: &str) -> IResult<&str, PLTLParseTree> {
 }
 
 impl FromStr for PLTLParseTree {
-    type Err = ();
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let result = parse(s).map_err(|_| ())?;
-        if result.0.is_empty() {
-            Ok(result.1)
-        } else {
-            Err(())
+        match parse(s).finish() {
+            Ok(result) => {
+                if result.0.is_empty() {
+                    Ok(result.1)
+                } else {
+                    Err(Error {
+                        offset: s.len() - result.0.len(),
+                    })
+                }
+            }
+            Err(err) => Err(Error {
+                offset: s.len() - err.input.len(),
+            }),
         }
     }
 }
 
 impl PLTLParseTree {
+    pub fn new_atom(s: impl Into<String>) -> Self {
+        Self::Atom(s.into())
+    }
+
     pub fn new_unary(op: UnaryOp, r: Self) -> Self {
         Self::Unary(op, Box::new(r))
     }
@@ -345,88 +362,94 @@ impl fmt::Display for PLTLParseTree {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use crate::pltl::PLTL;
 
-//     #[test]
-//     fn test_parse() {
-//         let input = r"a \lor b \lor c";
-//         let result = parse(input).unwrap().1;
-//         assert_eq!(
-//             result,
-//             PLTLParseTree::new_binary(
-//                 BinaryOp::Or,
-//                 PLTLParseTree::new_binary(
-//                     BinaryOp::Or,
-//                     PLTLParseTree::new_atom("a"),
-//                     PLTLParseTree::new_atom("b")
-//                 ),
-//                 PLTLParseTree::new_atom("c")
-//             )
-//         );
+    use super::*;
 
-//         let input = r"\neg \bot";
-//         let result = parse(input).unwrap().1;
-//         assert_eq!(
-//             result,
-//             PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::Bottom)
-//         );
+    #[test]
+    fn test_parse() {
+        let input = r"a \lor b \lor c";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTLParseTree::new_binary(
+                BinaryOp::Or,
+                PLTLParseTree::new_binary(
+                    BinaryOp::Or,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_atom("b")
+                ),
+                PLTLParseTree::new_atom("c")
+            )
+        );
 
-//         let input = r"X a \land \top";
-//         let result = parse(input).unwrap().1;
-//         assert_eq!(
-//             result,
-//             PLTLParseTree::new_binary(
-//                 BinaryOp::And,
-//                 PLTLParseTree::new_unary(UnaryOp::Next, PLTLParseTree::new_atom("a")),
-//                 PLTLParseTree::Top
-//             )
-//         );
+        let input = r"\neg \bot";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::Bottom)
+        );
 
-//         let input = r"a U Y b U c";
-//         let result = parse(input).unwrap().1;
-//         assert_eq!(
-//             result,
-//             PLTLParseTree::new_binary(
-//                 BinaryOp::Until,
-//                 PLTLParseTree::new_binary(
-//                     BinaryOp::Until,
-//                     PLTLParseTree::new_atom("a"),
-//                     PLTLParseTree::new_unary(UnaryOp::Yesterday, PLTLParseTree::new_atom("b")),
-//                 ),
-//                 PLTLParseTree::new_atom("c")
-//             )
-//         );
+        let input = r"X a \land \top";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTLParseTree::new_binary(
+                BinaryOp::And,
+                PLTLParseTree::new_unary(UnaryOp::Next, PLTLParseTree::new_atom("a")),
+                PLTLParseTree::Top
+            )
+        );
 
-//         let input = r"a <-> b";
-//         let result = parse(input).unwrap().1;
-//         assert_eq!(
-//             result,
-//             PLTLParseTree::new_binary(
-//                 BinaryOp::Or,
-//                 PLTLParseTree::new_binary(
-//                     BinaryOp::And,
-//                     PLTLParseTree::new_atom("a"),
-//                     PLTLParseTree::new_atom("b")
-//                 ),
-//                 PLTLParseTree::new_binary(
-//                     BinaryOp::And,
-//                     PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("a")),
-//                     PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("b"))
-//                 )
-//             )
-//         );
+        let input = r"a U Y b U c";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTLParseTree::new_binary(
+                BinaryOp::Until,
+                PLTLParseTree::new_binary(
+                    BinaryOp::Until,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_unary(UnaryOp::Yesterday, PLTLParseTree::new_atom("b")),
+                ),
+                PLTLParseTree::new_atom("c")
+            )
+        );
 
-//         let input = r"a -> b";
-//         let result = parse(input).unwrap().1;
-//         assert_eq!(
-//             result,
-//             PLTLParseTree::new_binary(
-//                 BinaryOp::Or,
-//                 PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("a")),
-//                 PLTLParseTree::new_atom("b")
-//             )
-//         );
-//     }
-// }
+        let input = r"a <-> b";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTLParseTree::new_binary(
+                BinaryOp::Or,
+                PLTLParseTree::new_binary(
+                    BinaryOp::And,
+                    PLTLParseTree::new_atom("a"),
+                    PLTLParseTree::new_atom("b")
+                ),
+                PLTLParseTree::new_binary(
+                    BinaryOp::And,
+                    PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("a")),
+                    PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("b"))
+                )
+            )
+        );
+
+        let input = r"a -> b";
+        let result = parse(input).unwrap().1;
+        assert_eq!(
+            result,
+            PLTLParseTree::new_binary(
+                BinaryOp::Or,
+                PLTLParseTree::new_unary(UnaryOp::Not, PLTLParseTree::new_atom("a")),
+                PLTLParseTree::new_atom("b")
+            )
+        );
+
+        let input = r"a U ";
+        let result = PLTL::from_string(input).unwrap_err();
+        assert_eq!(&input[result.offset..], " U ");
+    }
+}

@@ -1,19 +1,23 @@
+use std::mem;
+
+use smallvec::SmallVec;
+
 use super::{BinaryOp, UnaryOp, PLTL};
 
 impl PLTL {
-    pub fn remove_FGOH(&self) -> Self {
+    pub fn to_no_fgoh(self) -> Self {
         match self {
             PLTL::Top => PLTL::Top,
             PLTL::Bottom => PLTL::Bottom,
-            PLTL::Atom(_) => self.clone(),
+            PLTL::Atom(_) => self,
             PLTL::Unary(UnaryOp::Eventually, content) => {
-                PLTL::new_binary(BinaryOp::Until, PLTL::Top, content.remove_FGOH())
+                PLTL::new_binary(BinaryOp::Until, PLTL::Top, content.to_no_fgoh())
             }
             PLTL::Unary(UnaryOp::Globally, box content) => {
-                PLTL::new_binary(BinaryOp::WeakUntil, content.remove_FGOH(), PLTL::Bottom)
+                PLTL::new_binary(BinaryOp::WeakUntil, content.to_no_fgoh(), PLTL::Bottom)
             }
             PLTL::Unary(UnaryOp::Once, content) => {
-                PLTL::new_binary(BinaryOp::Since, PLTL::Top, content.remove_FGOH())
+                PLTL::new_binary(BinaryOp::Since, PLTL::Top, content.to_no_fgoh())
             }
             PLTL::Unary(UnaryOp::Historically, box content) => PLTL::new_unary(
                 UnaryOp::Not,
@@ -21,19 +25,19 @@ impl PLTL {
                     UnaryOp::Once,
                     PLTL::new_unary(UnaryOp::Not, content.clone()),
                 )
-                .remove_FGOH(),
+                .to_no_fgoh(),
             ),
-            PLTL::Unary(op, content) => PLTL::new_unary(*op, content.remove_FGOH()),
-            PLTL::Binary(op, l, r) => PLTL::new_binary(*op, l.remove_FGOH(), r.remove_FGOH()),
+            PLTL::Unary(op, content) => PLTL::new_unary(op, content.to_no_fgoh()),
+            PLTL::Binary(op, l, r) => PLTL::new_binary(op, l.to_no_fgoh(), r.to_no_fgoh()),
         }
     }
 
-    fn push_negation(&self) -> Self {
+    fn push_negation(self) -> Self {
         match self {
             PLTL::Top => PLTL::Bottom,
             PLTL::Bottom => PLTL::Top,
-            PLTL::Atom(_) => PLTL::new_unary(UnaryOp::Not, self.clone()),
-            PLTL::Unary(UnaryOp::Not, box content) => content.clone(),
+            PLTL::Atom(_) => PLTL::new_unary(UnaryOp::Not, self),
+            PLTL::Unary(UnaryOp::Not, box content) => content,
             PLTL::Unary(UnaryOp::Eventually, content) => {
                 PLTL::new_unary(UnaryOp::Globally, content.push_negation())
             }
@@ -78,17 +82,17 @@ impl PLTL {
                 rhs.push_negation(),
             ),
             PLTL::Binary(BinaryOp::Since, lhs, rhs) => PLTL::new_binary(
-                BinaryOp::WeakBefore,
+                BinaryOp::WeakBackTo,
                 lhs.push_negation(),
                 rhs.push_negation(),
             ),
-            PLTL::Binary(BinaryOp::WeakBefore, lhs, rhs) => {
+            PLTL::Binary(BinaryOp::WeakBackTo, lhs, rhs) => {
                 PLTL::new_binary(BinaryOp::Since, lhs.push_negation(), rhs.push_negation())
             }
             PLTL::Binary(BinaryOp::WeakSince, lhs, rhs) => {
-                PLTL::new_binary(BinaryOp::Before, lhs.push_negation(), rhs.push_negation())
+                PLTL::new_binary(BinaryOp::BackTo, lhs.push_negation(), rhs.push_negation())
             }
-            PLTL::Binary(BinaryOp::Before, lhs, rhs) => PLTL::new_binary(
+            PLTL::Binary(BinaryOp::BackTo, lhs, rhs) => PLTL::new_binary(
                 BinaryOp::WeakSince,
                 lhs.push_negation(),
                 rhs.push_negation(),
@@ -96,339 +100,479 @@ impl PLTL {
         }
     }
 
-    pub fn negation_normal_form(&self) -> Self {
+    pub fn to_negation_normal_form(self) -> Self {
         match self {
-            PLTL::Top => PLTL::Top,
-            PLTL::Bottom => PLTL::Bottom,
-            PLTL::Atom(_) => self.clone(),
-            PLTL::Unary(UnaryOp::Not, box PLTL::Atom(_)) => self.clone(),
-            PLTL::Unary(UnaryOp::Not, content) => content.push_negation().negation_normal_form(),
-            PLTL::Unary(op, content) => PLTL::new_unary(*op, content.negation_normal_form()),
+            PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => self,
+            PLTL::Unary(UnaryOp::Not, box PLTL::Atom(_)) => self,
+            PLTL::Unary(UnaryOp::Not, content) => content.push_negation().to_negation_normal_form(),
+            PLTL::Unary(op, content) => PLTL::new_unary(op, content.to_negation_normal_form()),
             PLTL::Binary(op, l, r) => {
-                PLTL::new_binary(*op, l.negation_normal_form(), r.negation_normal_form())
+                PLTL::new_binary(op, l.to_negation_normal_form(), r.to_negation_normal_form())
             }
-        }
-    }
-
-    pub fn to_dnf(&self) -> Self {
-        match self {
-            PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => self.clone(),
-            PLTL::Unary(op, content) => PLTL::new_unary(*op, content.to_dnf()),
-            PLTL::Binary(BinaryOp::And, lhs, rhs) => {
-                let lhs_dnf = lhs.to_dnf();
-                let rhs_dnf = rhs.to_dnf();
-
-                match (&lhs_dnf, &rhs_dnf) {
-                    (
-                        PLTL::Binary(BinaryOp::Or, box l1, box l2),
-                        PLTL::Binary(BinaryOp::Or, box r1, box r2),
-                    ) => PLTL::new_binary(
-                        BinaryOp::Or,
-                        PLTL::new_binary(
-                            BinaryOp::Or,
-                            PLTL::new_binary(
-                                BinaryOp::Or,
-                                PLTL::new_binary(BinaryOp::And, l1.clone(), r1.clone()).to_dnf(),
-                                PLTL::new_binary(BinaryOp::And, l1.clone(), r2.clone()).to_dnf(),
-                            ),
-                            PLTL::new_binary(BinaryOp::And, l2.clone(), r1.clone()).to_dnf(),
-                        ),
-                        PLTL::new_binary(BinaryOp::And, l2.clone(), r2.clone()).to_dnf(),
-                    ),
-                    (PLTL::Binary(BinaryOp::Or, box l1, box l2), _) => PLTL::new_binary(
-                        BinaryOp::Or,
-                        PLTL::new_binary(BinaryOp::And, l1.clone(), rhs_dnf.clone()).to_dnf(),
-                        PLTL::new_binary(BinaryOp::And, l2.clone(), rhs_dnf.clone()).to_dnf(),
-                    ),
-                    (_, PLTL::Binary(BinaryOp::Or, box r1, box r2)) => PLTL::new_binary(
-                        BinaryOp::Or,
-                        PLTL::new_binary(BinaryOp::And, lhs_dnf.clone(), r1.clone()).to_dnf(),
-                        PLTL::new_binary(BinaryOp::And, lhs_dnf.clone(), r2.clone()).to_dnf(),
-                    ),
-                    _ => PLTL::new_binary(BinaryOp::And, lhs_dnf, rhs_dnf),
-                }
-            }
-            PLTL::Binary(BinaryOp::Or, lhs, rhs) => {
-                PLTL::new_binary(BinaryOp::Or, lhs.to_dnf(), rhs.to_dnf())
-            }
-            PLTL::Binary(op, lhs, rhs) => PLTL::new_binary(*op, lhs.to_dnf(), rhs.to_dnf()),
-        }
-    }
-
-    pub fn flatten(&self) -> Self {
-        match self {
-            PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => self.clone(),
-            PLTL::Unary(op, content) => PLTL::new_unary(*op, content.flatten()),
-            PLTL::Binary(BinaryOp::And, box lhs, box rhs) => {
-                let lhs = lhs.flatten();
-                let rhs = rhs.flatten();
-                match (lhs, rhs) {
-                    (PLTL::Binary(BinaryOp::And, box l1, box l2), r) => PLTL::new_binary(
-                        BinaryOp::And,
-                        l1,
-                        PLTL::new_binary(BinaryOp::And, l2, r).flatten(),
-                    ),
-                    (l, r) => PLTL::new_binary(BinaryOp::And, l, r),
-                }
-            }
-            PLTL::Binary(BinaryOp::Or, box lhs, box rhs) => {
-                let lhs = lhs.flatten();
-                let rhs = rhs.flatten();
-                match (lhs, rhs) {
-                    (PLTL::Binary(BinaryOp::Or, box l1, box l2), r) => PLTL::new_binary(
-                        BinaryOp::Or,
-                        l1,
-                        PLTL::new_binary(BinaryOp::Or, l2, r).flatten(),
-                    ),
-                    (l, r) => PLTL::new_binary(BinaryOp::Or, l, r),
-                }
-            }
-            PLTL::Binary(op, lhs, rhs) => PLTL::new_binary(*op, lhs.flatten(), rhs.flatten()),
         }
     }
 }
 
 impl PLTL {
-    fn simplify_until_simplest(&self) -> (PLTL, bool) {
-        let result = match self {
-            PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => (self.clone(), false),
-            PLTL::Unary(UnaryOp::Not, box PLTL::Bottom) => (PLTL::Top, true),
-            PLTL::Unary(UnaryOp::Not, box PLTL::Top) => (PLTL::Bottom, true),
-            PLTL::Unary(UnaryOp::Not, box PLTL::Unary(UnaryOp::Not, box inner)) => {
-                (inner.clone(), true)
+    fn collect_commutative(self, op: BinaryOp, result: &mut SmallVec<[Self; 8]>) {
+        match self {
+            PLTL::Binary(self_op, box lhs, box rhs) if op == self_op => {
+                lhs.collect_commutative(op, result);
+                rhs.collect_commutative(op, result);
             }
-            PLTL::Unary(unary_op, box inner) => {
-                let (inner, changed) = inner.simplify_until_simplest();
-                (PLTL::new_unary(*unary_op, inner), changed)
+            _ => result.push(self),
+        }
+    }
+
+    // return: (result, may_go_to_other_branch)
+    fn simplify_once(self) -> (Self, bool) {
+        match self {
+            PLTL::Top | PLTL::Bottom | PLTL::Atom(_) => (self, false),
+            PLTL::Unary(UnaryOp::Not, box PLTL::Bottom) => (PLTL::Top, false),
+            PLTL::Unary(UnaryOp::Not, box PLTL::Top) => (PLTL::Bottom, false),
+            PLTL::Unary(UnaryOp::Not, box PLTL::Unary(UnaryOp::Not, box pltl)) => {
+                (pltl.simplify(), false)
             }
-            PLTL::Binary(BinaryOp::And, box PLTL::Bottom, _) => (PLTL::Bottom, true),
-            PLTL::Binary(BinaryOp::And, _, box PLTL::Bottom) => (PLTL::Bottom, true),
-            PLTL::Binary(BinaryOp::And, box PLTL::Top, box rhs) => (rhs.clone(), true),
-            PLTL::Binary(BinaryOp::And, box lhs, box PLTL::Top) => (lhs.clone(), true),
-            PLTL::Binary(BinaryOp::And, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
-            PLTL::Binary(
-                BinaryOp::And,
-                box PLTL::Binary(BinaryOp::And, box llhs, box lrhs),
-                box rhs,
-            ) => {
-                let (llhs, _) = llhs.simplify_until_simplest();
-                let (lrhs, _) = lrhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
+
+            PLTL::Unary(UnaryOp::Next, box PLTL::Bottom) => (PLTL::Bottom, false),
+            PLTL::Unary(UnaryOp::Next, box PLTL::Top) => (PLTL::Top, false),
+            PLTL::Unary(UnaryOp::Next, box PLTL::Unary(UnaryOp::Yesterday, content)) => (content.simplify(), false),
+            PLTL::Unary(UnaryOp::Next, content) => {
+                let content_simplified = content.simplify();
+                let may_go_to_other_branch =
+                    matches!(&content_simplified, PLTL::Bottom | PLTL::Top | PLTL::Unary(UnaryOp::Yesterday, _));
                 (
-                    PLTL::new_binary(
-                        BinaryOp::And,
-                        llhs.clone(),
-                        PLTL::new_binary(BinaryOp::And, lrhs.clone(), rhs.clone()),
-                    ),
-                    true,
-                )
-            }
-            PLTL::Binary(
-                BinaryOp::And,
-                box lhs,
-                box PLTL::Binary(BinaryOp::And, box rlhs, box rhs),
-            ) if lhs == rlhs => {
-                let (lhs, _) = lhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(BinaryOp::And, lhs.clone(), rhs.clone()),
-                    true,
-                )
-            }
-            PLTL::Binary(
-                BinaryOp::And,
-                box lhs,
-                box PLTL::Binary(BinaryOp::And, box rlhs, box rhs),
-            ) if rhs < lhs => {
-                let (rhs, _) = rhs.simplify_until_simplest();
-                let (rlhs, _) = rlhs.simplify_until_simplest();
-                let (lhs, _) = lhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(
-                        BinaryOp::And,
-                        rhs.clone(),
-                        PLTL::new_binary(BinaryOp::And, lhs.clone(), rlhs.clone()),
-                    ),
-                    true,
-                )
-            }
-            PLTL::Binary(
-                BinaryOp::And,
-                box lhs,
-                box PLTL::Binary(BinaryOp::And, box rlhs, box rhs),
-            ) if rlhs < lhs => {
-                let (lhs, _) = lhs.simplify_until_simplest();
-                let (rlhs, _) = rlhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(
-                        BinaryOp::And,
-                        rlhs.clone(),
-                        PLTL::new_binary(BinaryOp::And, lhs.clone(), rhs.clone()),
-                    ),
-                    true,
-                )
-            }
-            PLTL::Binary(BinaryOp::And, box lhs, box rhs) if rhs < lhs => {
-                let (rhs, _) = rhs.simplify_until_simplest();
-                let (lhs, _) = lhs.simplify_until_simplest();
-                let result = PLTL::new_binary(BinaryOp::And, rhs, lhs);
-                (
-                    result,
-                    true,
-                )
-            }
-            PLTL::Binary(BinaryOp::Or, box PLTL::Top, _) => (PLTL::Top, true),
-            PLTL::Binary(BinaryOp::Or, _, box PLTL::Top) => (PLTL::Top, true),
-            PLTL::Binary(BinaryOp::Or, box PLTL::Bottom, box rhs) => (rhs.clone(), true),
-            PLTL::Binary(BinaryOp::Or, box lhs, box PLTL::Bottom) => (lhs.clone(), true),
-            PLTL::Binary(BinaryOp::Or, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
-            PLTL::Binary(
-                BinaryOp::Or,
-                box PLTL::Binary(BinaryOp::Or, box llhs, box lrhs),
-                box rhs,
-            ) => {
-                let (llhs, _) = llhs.simplify_until_simplest();
-                let (lrhs, _) = lrhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(
-                        BinaryOp::Or,
-                        llhs.clone(),
-                        PLTL::new_binary(BinaryOp::Or, lrhs.clone(), rhs.clone()),
-                    ),
-                    true,
-                )
-            }
-            PLTL::Binary(
-                BinaryOp::Or,
-                box lhs,
-                box PLTL::Binary(BinaryOp::Or, box rlhs, box rhs),
-            ) if lhs == rlhs => {
-                let (lhs, _) = lhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(BinaryOp::Or, lhs.clone(), rhs.clone()),
-                    true,
-                )
-            }
-            PLTL::Binary(
-                BinaryOp::Or,
-                box lhs,
-                box PLTL::Binary(BinaryOp::Or, box rlhs, box rhs),
-            ) if rhs < lhs => {
-                let (rhs, _) = rhs.simplify_until_simplest();
-                let (rlhs, _) = rlhs.simplify_until_simplest();
-                let (lhs, _) = lhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(
-                        BinaryOp::Or,
-                        rhs.clone(),
-                        PLTL::new_binary(BinaryOp::Or, rlhs.clone(), lhs.clone()),
-                    ),
-                    true,
-                )
-            }
-            PLTL::Binary(
-                BinaryOp::Or,
-                box lhs,
-                box PLTL::Binary(BinaryOp::Or, box rlhs, box rhs),
-            ) if rlhs < lhs => {
-                let (lhs, _) = lhs.simplify_until_simplest();
-                let (rlhs, _) = rlhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(
-                        BinaryOp::Or,
-                        rlhs,
-                        PLTL::new_binary(BinaryOp::Or, lhs, rhs),
-                    ),
-                    true,
-                )
-            }
-            PLTL::Binary(BinaryOp::Or, box lhs, box rhs) if rhs < lhs => {
-                let (rhs, _) = rhs.simplify_until_simplest();
-                let (lhs, _) = lhs.simplify_until_simplest();
-                (
-                    PLTL::new_binary(BinaryOp::Or, rhs.clone(), lhs.clone()),
-                    true,
+                    PLTL::new_unary(UnaryOp::Next, content_simplified),
+                    may_go_to_other_branch,
                 )
             }
 
+            PLTL::Unary(UnaryOp::Yesterday, box PLTL::Bottom) => (PLTL::Bottom, false),
+            PLTL::Unary(UnaryOp::Yesterday, content) => {
+                let content_simplified = content.simplify();
+                let may_go_to_other_branch = content_simplified == PLTL::Bottom;
+                (
+                    PLTL::new_unary(UnaryOp::Yesterday, content_simplified),
+                    may_go_to_other_branch,
+                )
+            }
+            PLTL::Unary(UnaryOp::WeakYesterday, box PLTL::Top) => (PLTL::Top, false),
+            PLTL::Unary(UnaryOp::WeakYesterday, content) => {
+                let content_simplified = content.simplify();
+                let may_go_to_other_branch = content_simplified == PLTL::Top;
+                (
+                    PLTL::new_unary(UnaryOp::WeakYesterday, content_simplified),
+                    may_go_to_other_branch,
+                )
+            }
+            PLTL::Unary(op, content) => {
+                let content_simplified = content.simplify();
+                let may_go_to_other_branch = op == UnaryOp::Not
+                    && matches!(
+                        &content_simplified,
+                        PLTL::Bottom | PLTL::Top | PLTL::Unary(UnaryOp::Not, _)
+                    );
+                (
+                    PLTL::new_unary(op, content_simplified),
+                    may_go_to_other_branch,
+                )
+            }
+
+            PLTL::Binary(BinaryOp::And, box PLTL::Bottom, _) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::And, _, box PLTL::Bottom) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::And, box PLTL::Top, box rhs) => (rhs.simplify(), false),
+            PLTL::Binary(BinaryOp::And, box lhs, box PLTL::Top) => (lhs.simplify(), false),
+            PLTL::Binary(BinaryOp::And, _, _) => {
+                let mut pendings = SmallVec::new();
+                let mut result = SmallVec::<[PLTL; 8]>::new();
+                self.collect_commutative(BinaryOp::And, &mut pendings);
+                while !pendings.is_empty() {
+                    for pending in mem::take(&mut pendings) {
+                        let simplified = pending.simplify();
+                        match simplified {
+                            PLTL::Bottom => return (PLTL::Bottom, true),
+                            PLTL::Binary(BinaryOp::And, _, _) => {
+                                simplified.collect_commutative(BinaryOp::And, &mut pendings);
+                            }
+                            atom @ PLTL::Atom(_) => {
+                                if result.contains(&PLTL::new_unary(UnaryOp::Not, atom.clone())) {
+                                    return (PLTL::Bottom, false);
+                                } else {
+                                    result.push(atom)
+                                }
+                            }
+                            PLTL::Unary(UnaryOp::Not, box atom @ PLTL::Atom(_)) => {
+                                if result.contains(&atom) {
+                                    return (PLTL::Bottom, false);
+                                } else {
+                                    result.push(PLTL::new_unary(UnaryOp::Not, atom))
+                                }
+                            }
+                            _ => result.push(simplified),
+                        }
+                    }
+                }
+                result.sort();
+                result.dedup();
+                let first_is_top = if result.first() == Some(&PLTL::Top) {
+                    1
+                } else {
+                    0
+                };
+                let result = result
+                    .into_iter()
+                    .skip(first_is_top)
+                    .reduce(|acc, x| acc & x)
+                    .unwrap_or(PLTL::Top);
+                let may_go_to_other_branch =
+                    !matches!(result, PLTL::Binary(BinaryOp::And, _, _) | PLTL::Top);
+                (result, may_go_to_other_branch)
+            }
+
+            PLTL::Binary(BinaryOp::Or, box PLTL::Top, _) => (PLTL::Top, false),
+            PLTL::Binary(BinaryOp::Or, _, box PLTL::Top) => (PLTL::Top, false),
+            PLTL::Binary(BinaryOp::Or, box PLTL::Bottom, box rhs) => (rhs.simplify(), false),
+            PLTL::Binary(BinaryOp::Or, box lhs, box PLTL::Bottom) => (lhs.simplify(), false),
+            PLTL::Binary(BinaryOp::Or, _, _) => {
+                let mut pendings = SmallVec::new();
+                let mut result = SmallVec::<[PLTL; 8]>::new();
+
+                self.collect_commutative(BinaryOp::Or, &mut pendings);
+                while !pendings.is_empty() {
+                    for pending in mem::take(&mut pendings) {
+                        let simplified = pending.simplify();
+                        match simplified {
+                            PLTL::Top => return (PLTL::Top, false),
+                            PLTL::Binary(BinaryOp::Or, _, _) => {
+                                simplified.collect_commutative(BinaryOp::Or, &mut pendings);
+                            }
+                            atom @ PLTL::Atom(_) => {
+                                if result.contains(&PLTL::new_unary(UnaryOp::Not, atom.clone())) {
+                                    return (PLTL::Top, false);
+                                } else {
+                                    result.push(atom)
+                                }
+                            }
+                            PLTL::Unary(UnaryOp::Not, box atom @ PLTL::Atom(_)) => {
+                                if result.contains(&atom) {
+                                    return (PLTL::Top, false);
+                                } else {
+                                    result.push(PLTL::new_unary(UnaryOp::Not, atom))
+                                }
+                            }
+                            _ => result.push(simplified),
+                        }
+                    }
+                }
+
+                result.sort();
+                result.dedup();
+                let first_is_bottom = if result.first() == Some(&PLTL::Bottom) {
+                    1
+                } else {
+                    0
+                };
+                let result = result
+                    .into_iter()
+                    .skip(first_is_bottom)
+                    .reduce(|acc, x| acc | x)
+                    .unwrap_or(PLTL::Bottom);
+                let may_go_to_other_branch =
+                    !matches!(result, PLTL::Binary(BinaryOp::Or, _, _) | PLTL::Bottom);
+                (result, may_go_to_other_branch)
+            }
+
+            PLTL::Binary(BinaryOp::Until, box PLTL::Bottom, box rhs) => (rhs.simplify(), false),
             PLTL::Binary(BinaryOp::Until, _, box PLTL::Top) => (PLTL::Top, false),
-            PLTL::Binary(BinaryOp::Until, box PLTL::Bottom, box rhs) => (rhs.clone(), true),
             PLTL::Binary(BinaryOp::Until, _, box PLTL::Bottom) => (PLTL::Bottom, false),
-            PLTL::Binary(BinaryOp::Until, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
+            PLTL::Binary(BinaryOp::Until, box lhs, box rhs) if lhs == rhs => {
+                (lhs.simplify(), false)
+            }
+            PLTL::Binary(
+                BinaryOp::Until,
+                box lhs,
+                box PLTL::Binary(BinaryOp::Until, box rlhs, box rrhs),
+            ) if lhs == rlhs => {
+                let lhs = lhs.simplify();
+                let new_rhs = rrhs.simplify();
+                let can_fold_further = match (&lhs, &new_rhs) {
+                    (PLTL::Bottom, _) => true,
+                    (_, PLTL::Top) => true,
+                    (_, PLTL::Bottom) => true,
+                    (lhs, PLTL::Binary(BinaryOp::Until, box rlhs, box rrhs)) if lhs == rlhs => true,
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::Until, lhs, new_rhs),
+                    can_fold_further,
+                )
+            }
+            PLTL::Binary(BinaryOp::Until, box lhs, box rhs) => {
+                let new_lhs = lhs.simplify();
+                let new_rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &new_rhs) {
+                    (PLTL::Bottom, _) => true,
+                    (_, PLTL::Top) => true,
+                    (_, PLTL::Bottom) => true,
+                    (new_lhs, PLTL::Binary(BinaryOp::Until, box rlhs, _)) if new_lhs == rlhs => {
+                        true
+                    }
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::Until, new_lhs, new_rhs),
+                    can_fold_further,
+                )
+            }
 
-            PLTL::Binary(BinaryOp::Release, box PLTL::Top, box rhs) => (rhs.clone(), true),
+            PLTL::Binary(BinaryOp::Release, box PLTL::Top, box rhs) => (rhs.simplify(), false),
             PLTL::Binary(BinaryOp::Release, _, box PLTL::Top) => (PLTL::Top, false),
             PLTL::Binary(BinaryOp::Release, _, box PLTL::Bottom) => (PLTL::Bottom, false),
-            PLTL::Binary(BinaryOp::Release, box lhs, box rhs) if lhs == rhs => (lhs.clone(), true),
+            PLTL::Binary(BinaryOp::Release, box lhs, box rhs) if lhs == rhs => {
+                (lhs.simplify(), false)
+            }
+            PLTL::Binary(
+                BinaryOp::Release,
+                box lhs,
+                box PLTL::Binary(BinaryOp::Release, box rlhs, box rrhs),
+            ) if lhs == rlhs => {
+                let lhs = lhs.simplify();
+                let new_rhs = rrhs.simplify();
+                let can_fold_further = match (&lhs, &new_rhs) {
+                    (PLTL::Top, _) => true,
+                    (_, PLTL::Top) => true,
+                    (_, PLTL::Bottom) => true,
+                    (lhs, PLTL::Binary(BinaryOp::Release, box rlhs, _)) if lhs == rlhs => true,
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::Release, lhs, new_rhs),
+                    can_fold_further,
+                )
+            }
+            PLTL::Binary(BinaryOp::Release, box lhs, box rhs) => {
+                let new_lhs = lhs.simplify();
+                let new_rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &new_rhs) {
+                    (PLTL::Top, _) => true,
+                    (_, PLTL::Top) => true,
+                    (_, PLTL::Bottom) => true,
+                    (lhs, PLTL::Binary(BinaryOp::Release, box rlhs, _)) if lhs == rlhs => true,
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::Release, new_lhs, new_rhs),
+                    can_fold_further,
+                )
+            }
 
             PLTL::Binary(BinaryOp::WeakUntil, box PLTL::Top, _) => (PLTL::Top, false),
-            PLTL::Binary(BinaryOp::WeakUntil, box PLTL::Bottom, box rhs) => (rhs.clone(), true),
+            PLTL::Binary(BinaryOp::WeakUntil, box PLTL::Bottom, box rhs) => (rhs.simplify(), false),
             PLTL::Binary(BinaryOp::WeakUntil, _, box PLTL::Top) => (PLTL::Top, false),
             PLTL::Binary(BinaryOp::WeakUntil, box lhs, box rhs) if lhs == rhs => {
-                (lhs.clone(), true)
+                (lhs.simplify(), false)
+            }
+            PLTL::Binary(
+                BinaryOp::WeakUntil,
+                box PLTL::Binary(BinaryOp::WeakUntil, box llhs, box lrhs),
+                box rhs,
+            ) if lrhs == rhs => {
+                let new_lhs = llhs.simplify();
+                let rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &rhs) {
+                    (PLTL::Top, _) => true,
+                    (PLTL::Bottom, _) => true,
+                    (_, PLTL::Top) => true,
+                    (PLTL::Binary(BinaryOp::WeakUntil, _, box lrhs), rhs) if lrhs == rhs => true,
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::WeakUntil, new_lhs, rhs),
+                    can_fold_further,
+                )
+            }
+            PLTL::Binary(BinaryOp::WeakUntil, box lhs, box rhs) => {
+                let new_lhs = lhs.simplify();
+                let new_rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &new_rhs) {
+                    (PLTL::Top, _) => true,
+                    (PLTL::Bottom, _) => true,
+                    (_, PLTL::Top) => true,
+                    (PLTL::Binary(BinaryOp::WeakUntil, _, box lrhs), new_rhs)
+                        if lrhs == new_rhs =>
+                    {
+                        true
+                    }
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::WeakUntil, new_lhs, new_rhs),
+                    can_fold_further,
+                )
             }
 
             PLTL::Binary(BinaryOp::MightyRelease, box PLTL::Bottom, _) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::MightyRelease, box PLTL::Top, box rhs) => {
+                (rhs.simplify(), false)
+            }
             PLTL::Binary(BinaryOp::MightyRelease, _, box PLTL::Bottom) => (PLTL::Bottom, false),
-            PLTL::Binary(BinaryOp::MightyRelease, box PLTL::Top, box rhs) => (rhs.clone(), true),
             PLTL::Binary(BinaryOp::MightyRelease, box lhs, box rhs) if lhs == rhs => {
-                (lhs.clone(), true)
-            }
-
-            PLTL::Binary(
-                op @ (BinaryOp::Release | BinaryOp::Until),
-                box lhs,
-                box PLTL::Binary(op2 @ (BinaryOp::Release | BinaryOp::Until), box rlhs, box rrhs),
-            ) if op == op2 && lhs == rlhs => {
-                let (lhs, _) = lhs.simplify_until_simplest();
-                let (rrhs, _) = rrhs.simplify_until_simplest();
-                (PLTL::new_binary(*op, lhs, rrhs), true)
+                (lhs.simplify(), false)
             }
             PLTL::Binary(
-                op @ (BinaryOp::MightyRelease | BinaryOp::WeakUntil),
-                box PLTL::Binary(
-                    op2 @ (BinaryOp::MightyRelease | BinaryOp::WeakUntil),
-                    box llhs,
-                    box lrhs,
-                ),
+                BinaryOp::MightyRelease,
+                box PLTL::Binary(BinaryOp::MightyRelease, box llhs, box lrhs),
                 box rhs,
-            ) if op == op2 && lrhs == rhs => {
-                let (llhs, _) = llhs.simplify_until_simplest();
-                let (rhs, _) = rhs.simplify_until_simplest();
-                (PLTL::new_binary(*op, llhs, rhs), true)
-            }
-            PLTL::Binary(binary_op, box lhs, box rhs) => {
-                let (lhs, changed_lhs) = lhs.simplify_until_simplest();
-                let (rhs, changed_rhs) = rhs.simplify_until_simplest();
+            ) if lrhs == rhs => {
+                let new_lhs = llhs.simplify();
+                let rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &rhs) {
+                    (PLTL::Bottom, _) => true,
+                    (PLTL::Top, _) => true,
+                    (_, PLTL::Bottom) => true,
+                    (PLTL::Binary(BinaryOp::MightyRelease, _, box lrhs), rhs) if lrhs == rhs => {
+                        true
+                    }
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
                 (
-                    PLTL::new_binary(*binary_op, lhs, rhs),
-                    changed_lhs || changed_rhs,
+                    PLTL::new_binary(BinaryOp::MightyRelease, new_lhs, rhs),
+                    can_fold_further,
                 )
             }
-        };
-        result
+            PLTL::Binary(BinaryOp::MightyRelease, box lhs, box rhs) => {
+                let new_lhs = lhs.simplify();
+                let new_rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &new_rhs) {
+                    (PLTL::Bottom, _) => true,
+                    (PLTL::Top, _) => true,
+                    (_, PLTL::Bottom) => true,
+                    (PLTL::Binary(BinaryOp::MightyRelease, _, box lrhs), new_rhs)
+                        if lrhs == new_rhs =>
+                    {
+                        true
+                    }
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    PLTL::new_binary(BinaryOp::MightyRelease, new_lhs, new_rhs),
+                    can_fold_further,
+                )
+            }
+
+            PLTL::Binary(BinaryOp::Since, _, box PLTL::Bottom) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::Since, box PLTL::Bottom, box rhs) => (rhs.simplify(), false),
+            PLTL::Binary(BinaryOp::Since, box lhs, box rhs) => {
+                let lhs = lhs.simplify();
+                let rhs = rhs.simplify();
+                if lhs == rhs {
+                    (lhs, false)
+                } else {
+                    let can_fold_further = lhs == PLTL::Bottom || rhs == PLTL::Bottom;
+                    (
+                        PLTL::new_binary(BinaryOp::Since, lhs, rhs),
+                        can_fold_further,
+                    )
+                }
+            }
+
+            PLTL::Binary(BinaryOp::WeakSince, box PLTL::Bottom, box rhs) => (rhs.simplify(), false),
+            PLTL::Binary(BinaryOp::WeakSince, box PLTL::Top, _) => (PLTL::Top, false),
+            PLTL::Binary(BinaryOp::WeakSince, _, box PLTL::Top) => (PLTL::Top, false),
+            PLTL::Binary(BinaryOp::WeakSince, box lhs, box rhs) => {
+                let lhs = lhs.simplify();
+                let rhs = rhs.simplify();
+                if lhs == rhs {
+                    (lhs.simplify(), false)
+                } else {
+                    let can_fold_further =
+                        lhs == PLTL::Bottom || lhs == PLTL::Top || rhs == PLTL::Top;
+                    (
+                        PLTL::new_binary(BinaryOp::WeakSince, lhs, rhs),
+                        can_fold_further,
+                    )
+                }
+            }
+
+            PLTL::Binary(BinaryOp::BackTo, box PLTL::Bottom, _) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::BackTo, _, box PLTL::Bottom) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::BackTo, box PLTL::Top, box rhs) => (rhs.simplify(), false),
+            PLTL::Binary(BinaryOp::BackTo, box lhs, box rhs) => {
+                let lhs = lhs.simplify();
+                let rhs = rhs.simplify();
+                if lhs == rhs {
+                    (lhs.simplify(), false)
+                } else {
+                    let can_fold_further =
+                        lhs == PLTL::Bottom || lhs == PLTL::Top || rhs == PLTL::Bottom;
+                    (
+                        PLTL::new_binary(BinaryOp::BackTo, lhs, rhs),
+                        can_fold_further,
+                    )
+                }
+            }
+
+            PLTL::Binary(BinaryOp::WeakBackTo, box PLTL::Top, box rhs) => (rhs.simplify(), false),
+            PLTL::Binary(BinaryOp::WeakBackTo, _, box PLTL::Top) => (PLTL::Top, false),
+            PLTL::Binary(BinaryOp::WeakBackTo, _, box PLTL::Bottom) => (PLTL::Bottom, false),
+            PLTL::Binary(BinaryOp::WeakBackTo, box lhs, box rhs) => {
+                let lhs = lhs.simplify();
+                let rhs = rhs.simplify();
+                if lhs == rhs {
+                    (lhs.simplify(), false)
+                } else {
+                    let can_fold_further =
+                        lhs == PLTL::Top || rhs == PLTL::Top || rhs == PLTL::Bottom;
+                    (
+                        PLTL::new_binary(BinaryOp::WeakBackTo, lhs, rhs),
+                        can_fold_further,
+                    )
+                }
+            }
+        }
     }
 
-    pub fn simplify(&self) -> PLTL {
-        let mut result = self.clone();
-        loop {
-            let (new_result, changed) = result.simplify_until_simplest();
-            if !changed {
+    pub fn simplify(self) -> Self {
+        let mut result = self;
+
+        for _ in 0..65536 {
+            let (new_result, may_go_to_other_branch) = result.simplify_once();
+            if !may_go_to_other_branch {
                 return new_result;
             }
             result = new_result;
         }
+        #[cfg(debug_assertions)]
+        panic!("Simplification failed: {}", result);
+        #[cfg(not(debug_assertions))]
+        result
     }
+}
 
-    pub fn normal_form(&self) -> Self {
-        self.remove_FGOH()
-            .negation_normal_form()
-            .simplify()
-            .flatten()
-            .simplify()
+#[cfg(test)]
+mod tests {
+    use crate::pltl::ganerator::generate_formula;
+
+    use super::*;
+
+    // #[test]
+    // fn test_simplify() {
+    //     let (pltl, ctx) = PLTL::from_string("p & ¬p").unwrap();
+    //     println!("{}", pltl);
+    //     let simplified = pltl.to_no_fgoh();
+    //     println!("{}", simplified);
+    //     let simplified = simplified.simplify();
+    //     println!("{}", simplified);
+    // }
+
+    #[test]
+    fn test_simplify() {
+        for _ in 0..1000 {
+            let pltl = generate_formula(5, 2);
+            println!("{}", pltl);
+            let simplified = pltl.to_no_fgoh().simplify();
+            println!("{}", simplified);
+            println!("----");
+        }
     }
 }

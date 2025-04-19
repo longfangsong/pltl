@@ -1,13 +1,13 @@
-use super::{BinaryOp, PLTL};
+use super::{labeled::LabeledPLTL, BinaryOp, PLTL};
 
-pub fn conjunction(mut content: impl Iterator<Item = PLTL>) -> PLTL {
-    let first = content.next().unwrap();
-    content.fold(first, |acc, item| {
-        PLTL::new_binary(BinaryOp::And, acc, item)
-    })
+pub fn conjunction(content: impl Iterator<Item = PLTL>) -> PLTL {
+    content.reduce(|acc, item| PLTL::new_binary(BinaryOp::And, acc, item)).unwrap()
 }
 
-pub fn disjunction(mut content: impl Iterator<Item = PLTL>) -> PLTL {
-    let first = content.next().unwrap();
-    content.fold(first, |acc, item| PLTL::new_binary(BinaryOp::Or, acc, item))
+pub fn disjunction(content: impl Iterator<Item = PLTL>) -> PLTL {
+    content.reduce(|acc, item| PLTL::new_binary(BinaryOp::Or, acc, item)).unwrap()
+}
+
+pub fn disjunction_labeled(content: impl Iterator<Item = LabeledPLTL>) -> LabeledPLTL {
+    content.reduce(|acc, item| LabeledPLTL::new_binary(BinaryOp::Or, acc, item)).unwrap()
 }

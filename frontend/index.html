@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLTL to DOT Converter</title>
     <script src="https://unpkg.com/@viz-js/viz@3.2.4/lib/viz-standalone.js"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -143,6 +144,7 @@
             resultsDiv.appendChild(tabDiv);
             
             // Create tab content
+            console.log(dots);
             for (let i = 0; i < dots.length; i++) {
                 const tabContent = document.createElement('div');
                 tabContent.id = `tab-${i}`;
@@ -152,7 +154,7 @@
                     tabContent.innerHTML = '<p>No graphs available in this category.</p>';
                 } else {
                     for (let j = 0; j < dots[i].length; j++) {
-                        const dot = dots[i][j];
+                        const [name, dot] = dots[i][j];
                         const graphContainer = document.createElement('div');
                         graphContainer.className = 'graph-container';
                         
@@ -166,7 +168,9 @@
                             graphContainer.innerHTML = `<p>Error rendering graph: ${error.message}</p>`;
                         }
                         
-                        tabContent.appendChild(document.createElement('h3')).textContent = `Graph ${j + 1}:`;
+                        const h3 = document.createElement('h3');
+                        h3.innerHTML = `\\[${name}\\]`;
+                        tabContent.appendChild(h3);
                         tabContent.appendChild(graphContainer);
                         tabContent.appendChild(document.createElement('hr'));
                     }
@@ -174,7 +178,7 @@
                 
                 resultsDiv.appendChild(tabContent);
             }
-            
+            MathJax.typeset();
             // Open the first tab by default
             document.getElementsByClassName('tablinks')[0].click();
         }

@@ -43,15 +43,11 @@ fn bench_contains(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("contains_size_{}", size));
 
         group.bench_function("hashset_contains", |b| {
-            b.iter(|| {
-                black_box(&hashset).contains(&1)
-            })
+            b.iter(|| black_box(&hashset).contains(&1))
         });
 
         group.bench_function("bitset_contains", |b| {
-            b.iter(|| {
-                black_box(&bitset).contains(1)
-            })
+            b.iter(|| black_box(&bitset).contains(1))
         });
 
         group.finish();

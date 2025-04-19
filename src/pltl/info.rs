@@ -32,8 +32,8 @@ impl BinaryOp {
                 | BinaryOp::Since
                 | BinaryOp::WeakUntil
                 | BinaryOp::WeakSince
-                | BinaryOp::Before
-                | BinaryOp::WeakBefore
+                | BinaryOp::BackTo
+                | BinaryOp::WeakBackTo
                 | BinaryOp::Release
                 | BinaryOp::MightyRelease
         )
@@ -41,7 +41,7 @@ impl BinaryOp {
     pub fn is_past(&self) -> bool {
         matches!(
             self,
-            BinaryOp::Before | BinaryOp::WeakBefore | BinaryOp::Since | BinaryOp::WeakSince
+            BinaryOp::BackTo | BinaryOp::WeakBackTo | BinaryOp::Since | BinaryOp::WeakSince
         )
     }
     pub fn is_u_type(&self) -> bool {
@@ -85,7 +85,7 @@ impl PLTL {
         }
     }
 
-    pub fn should_in_u_set(&self) -> bool {
+    fn should_in_u_set(&self) -> bool {
         match self {
             PLTL::Binary(op, _, _) => op.is_u_type(),
             _ => false,
@@ -100,7 +100,7 @@ impl PLTL {
         }
     }
 
-    pub fn should_in_v_set(&self) -> bool {
+    fn should_in_v_set(&self) -> bool {
         match self {
             PLTL::Binary(op, _, _) => op.is_v_type(),
             _ => false,

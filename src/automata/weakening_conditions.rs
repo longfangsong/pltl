@@ -1,219 +1,124 @@
-use super::{
-    hoa::{
-        self,
-        body::{Edge, Label},
-        format::{AcceptanceName, AcceptanceSignature, Property, StateConjunction},
-        header::{Header, HeaderItem},
-        AbstractLabelExpression, HoaAutomaton,
-    },
-    AutomataDump, Context,
-};
-use crate::utils::BitSet;
-use crate::{
-    pltl::{after_function::local_after_annotated, Annotated, BinaryOp},
-    utils::{character_to_label_expression, BitSet32, Map, Set},
-};
-fn is_saturated(ctx: &Context, i: usize, j: usize) -> bool {
-    for psf0 in ctx.c_sets[ctx.init_c].iter() {
-        for psf1 in ctx.c_sets[ctx.init_c].iter() {
-            if psf0.rewrite(&ctx.psf_context, &ctx.c_sets[i])
-                == psf1.rewrite(&ctx.psf_context, &ctx.c_sets[j])
-                && psf0.rewrite(&ctx.psf_context, &ctx.c_sets[i])
-                    != psf1.rewrite(&ctx.psf_context, &ctx.c_sets[j])
-            {
-                return false;
-            }
-        }
-    }
-    true
-}
+use std::iter;
 
-pub fn transition(ctx: &Context, current: &[Annotated], letter: BitSet32) -> Vec<Annotated> {
-    let k = ctx.c_sets.len();
-    let mut result = Vec::with_capacity(current.len());
-    if current
-        == &[
-            Annotated::Top,
-            Annotated::Bottom,
-            Annotated::Bottom,
-            Annotated::Bottom,
-        ]
-    {
-        println!("current: {:?}, letter: 0b{:b}", current, letter);
-    }
-    for (i, _) in current.iter().enumerate() {
-        let mut current_result_i = None;
-        for j in 0..k {
-            if is_saturated(ctx, i, j) {
-                let part_1 = local_after_annotated(
-                    &ctx.psf_context,
-                    &current[j],
-                    letter,
-                    &ctx.c_rewrite_c_sets[i][j],
-                );
-                let result = ctx.c_sets[i]
-                    .iter()
-                    .map(|ci_item| {
-                        let ci_item_cj = ci_item
-                        .rewrite(&ctx.psf_context, &ctx.c_sets[j]);
-                        let wc = ci_item_cj
-                            .weaken_condition(&ctx.psf_context);
-                        let past_st_set = &ctx.c_rewrite_c_sets[i][j];
-                        if current
-                            == &[
-                                Annotated::Top,
-                                Annotated::Bottom,
-                                Annotated::Bottom,
-                                Annotated::Bottom,
-                            ]
-                            && j == 0
-                        {
-                            println!(
-                                "ξ: ({}, 0b{:b}), cj: (0b{:b}, 0b{:b}), ξ<cj>: ({}, 0b{:b}), wc: {}, past_st_set: (0b{:b}, 0b{:b})",
-                                ci_item.id, ci_item.state, &ctx.c_sets[j].existence, &ctx.c_sets[j].state, ci_item_cj.id, ci_item_cj.state, wc, past_st_set.existence, past_st_set.state
-                            );
-                        }
-                        local_after_annotated(&ctx.psf_context, &wc, letter, past_st_set)
-                    })
-                    .fold(part_1, |acc, part| {
-                        Annotated::new_binary(BinaryOp::And, acc, part)
-                    });
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
-                if current
-                    == &[
-                        Annotated::Top,
-                        Annotated::Bottom,
-                        Annotated::Bottom,
-                        Annotated::Bottom,
-                    ]
-                    && j == 0
-                {
-                    println!("{i} {j}: {}", result);
+use super::{AutomataDump, Context};
+use crate::pltl::labeled::after_function::local_after;
+use crate::pltl::labeled::info::psf_weaken_condition;
+use crate::pltl::BinaryOp;
+use crate::utils::{BitSet, Map};
+use crate::{pltl::labeled::LabeledPLTL, utils::BitSet32};
+
+pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> Vec<LabeledPLTL> {
+    let result = current
+        .par_iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let mut result_i = Vec::new();
+            'outer: for &j in &ctx.saturated_c_sets[i] {
+                let mut result =
+                    local_after(&ctx.psf_context, &current[j as usize], letter, i as u32);
+                if result == LabeledPLTL::Bottom {
+                    continue;
                 }
-                if let Some(current_result_i_content) = current_result_i {
-                    current_result_i = Some(Annotated::new_binary(
-                        BinaryOp::Or,
-                        current_result_i_content,
-                        result,
-                    ));
-                } else {
-                    current_result_i = Some(result);
+                for c_i_item in (i as u32).iter() {
+                    let wc = psf_weaken_condition(&ctx.psf_context, c_i_item, j);
+                    let after_wc = local_after(&ctx.psf_context, &wc, letter, i as u32);
+                    if after_wc == LabeledPLTL::Bottom {
+                        continue 'outer;
+                    }
+                    result = LabeledPLTL::new_binary(BinaryOp::And, result, after_wc);
                 }
+                result_i.push(result);
             }
-        }
-        result.push(current_result_i.unwrap().simplify());
-    }
-    if current
-        == &[
-            Annotated::Top,
-            Annotated::Bottom,
-            Annotated::Bottom,
-            Annotated::Bottom,
-        ]
-    {
-        println!("===");
-    }
+
+            result_i
+                .into_iter()
+                .reduce(|acc, item| LabeledPLTL::new_binary(BinaryOp::Or, acc, item))
+                .unwrap_or(LabeledPLTL::Bottom)
+                .simplify()
+        })
+        .collect();
     result
 }
 
-type State = Vec<Annotated>;
+pub fn initial_state(ctx: &Context) -> Vec<LabeledPLTL> {
+    let mut result: Vec<LabeledPLTL> = iter::repeat(LabeledPLTL::Bottom)
+        .take(1 << ctx.psf_context.expand_once.len())
+        .collect();
+    result[ctx.psf_context.initial_weaken_state as usize] = LabeledPLTL::Top;
+    result
+}
 
-fn dump(ctx: &Context, init_state: &Vec<Annotated>, letter_count: usize) -> AutomataDump<State> {
-    let mut transitions = Vec::new();
+pub type State = Vec<LabeledPLTL>;
 
-    let mut pending_states: Vec<_> = Vec::new();
-    pending_states.push(init_state.clone());
-    let mut seen_states = Set::default();
+pub fn dump(ctx: &Context) -> AutomataDump<State> {
+    let init_state = initial_state(ctx);
+    let mut transitions = Map::default();
+    let mut pending_states: Vec<State> = Vec::new();
+    let mut state_id_map = Map::default();
+    let mut id = 0;
+    pending_states.push(init_state.to_vec());
     while let Some(state) = pending_states.pop() {
-        if seen_states.contains(&state) {
+        if transitions.contains_key(&state) {
             continue;
         }
-        seen_states.insert(state.clone());
-        let letter_power_set = BitSet32::power_set(letter_count);
-        transitions.extend(letter_power_set.map(|letter| {
-            let next_state = transition(ctx, &state, letter);
-            pending_states.push(next_state.clone());
-            (state.clone(), letter, next_state)
-        }));
-    }
+        if !state_id_map.contains_key(&state) {
+            state_id_map.insert(state.clone(), id);
+            id += 1;
+        }
+        let letter_power_set = BitSet32::power_set_of_size(ctx.pltl_context.atoms.len());
+        let next_states: Vec<_> = letter_power_set
+            .into_par_iter()
+            .map(|letter| transition(ctx, &state, letter))
+            .collect();
 
+        for next_state in &next_states {
+            pending_states.push(next_state.clone());
+        }
+        transitions.insert(state, next_states);
+    }
     AutomataDump {
-        init_state: init_state.clone(),
+        state_id_map,
+        init_state: init_state.to_vec(),
         transitions,
     }
 }
 
-pub fn dump_hoa(ctx: &Context, init_state: &Vec<Annotated>) -> HoaAutomaton {
-    let letter_count = ctx.atom_map.len();
-    let dump = dump(ctx, init_state, letter_count);
-    let mut state_id_map = Map::default();
-    let mut states = Vec::new();
-    for same_from in dump.transitions.chunks(1 << ctx.atom_map.len()) {
-        let from = same_from[0].0.clone();
-        let next_id = state_id_map.len() as u32;
-        let from_id = *state_id_map.entry(from.clone()).or_insert_with(|| next_id);
-        let edges = same_from.iter().map(|(_, letter, to)| {
-            let next_id = state_id_map.len() as u32;
-            let to_id = *state_id_map.entry(to.clone()).or_insert_with(|| next_id);
-            Edge::from_parts(
-                Label(AbstractLabelExpression::Conjunction(
-                    character_to_label_expression(*letter, ctx.atom_map.len()),
-                )),
-                StateConjunction::singleton(to_id),
-                AcceptanceSignature::empty(),
-            )
-        });
-        states.push(hoa::State::from_parts(
-            from_id,
-            Some(format!(
-                "{}",
-                from.iter()
-                    .map(|a| a
-                        .to_pltl(&ctx.psf_context)
-                        .format_with_atom_names(&ctx.atom_map))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )),
-            AcceptanceSignature::empty(),
-            edges.collect(),
-        ));
-    }
-    HoaAutomaton::from_parts(
-        Header::from_vec(vec![
-            HeaderItem::v1(),
-            HeaderItem::Name("\"wc\"".to_string()),
-            HeaderItem::Start(StateConjunction::singleton(0)),
-            HeaderItem::AcceptanceName(AcceptanceName::None, Vec::new()),
-            HeaderItem::Properties(vec![
-                Property::Deterministic,
-                Property::Complete,
-                Property::StateAcceptance,
-            ]),
-            HeaderItem::AP(ctx.atom_map.clone()),
-        ]),
-        states.into(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{automata::hoa::output::to_hoa, pltl::PLTL};
+    use crate::pltl::PLTL;
 
     use super::*;
 
     #[test]
-    fn test_dump_hoa() {
-        let (ltl, atom_map) = PLTL::from_string("Y (a ~S b)");
-        let ltl = ltl.normal_form();
-        let ctx = Context::new(&ltl, atom_map);
-        println!("{}", ctx);
-        let init_state = vec![
-            Annotated::Bottom,
-            Annotated::Top,
-            Annotated::Bottom,
-            Annotated::Bottom,
-        ];
-        let hoa = dump_hoa(&ctx, &init_state);
-        println!("{}", to_hoa(&hoa));
+    fn test_dump() {
+        let (ltl, ltl_ctx) = PLTL::from_string("Y (p ~S q)").unwrap();
+        let ctx = Context::new(&ltl, ltl_ctx);
+        println!("ctx: {}", ctx );
+        let dump = dump(&ctx);
+        for (state, transitions) in &dump.transitions {
+            println!(
+                "{}",
+                state
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            for (character, transition) in transitions.iter().enumerate() {
+                println!(
+                    "  0b{:b} -> {}",
+                    character,
+                    transition
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
     }
 }
