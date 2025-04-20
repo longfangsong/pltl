@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Display},
-    iter,
-};
+use std::fmt::{self, Display};
 
 use hoa::{output::{to_dot, to_hoa}, HoaAutomaton};
 use itertools::Itertools;
@@ -13,7 +10,7 @@ use crate::{
         labeled::{Context as PsfContext, LabeledPLTL},
         BinaryOp, PLTL,
     },
-    utils::{powerset, BitSet, BitSet32, Map, Set},
+    utils::{powerset, BitSet, Map, Set},
 };
 
 mod guarantee;
@@ -46,16 +43,16 @@ fn compute_saturated_c_set(psf_context: &PsfContext<'_>) -> Vec<Vec<u32>> {
                         let mut psf0_rewrite_cj = psf0.clone();
                         let mut psf1_rewrite_cj = psf1.clone();
                         psf0_rewrite_cj.rewrite_with_set(cj);
-                        psf0_rewrite_cj.normalize(&psf_context);
+                        psf0_rewrite_cj.normalize(psf_context);
                         psf0_rewrite_cj = psf0_rewrite_cj.simplify();
                         psf1_rewrite_cj.rewrite_with_set(cj);
-                        psf1_rewrite_cj.normalize(&psf_context);
+                        psf1_rewrite_cj.normalize(psf_context);
                         psf1_rewrite_cj = psf1_rewrite_cj.simplify();
 
                         if !LabeledPLTL::eq_under_ctx(
                             &psf0_rewrite_cj,
                             &psf1_rewrite_cj,
-                            &psf_context,
+                            psf_context,
                         ) {
                             continue 'check_psf;
                         }
@@ -63,14 +60,14 @@ fn compute_saturated_c_set(psf_context: &PsfContext<'_>) -> Vec<Vec<u32>> {
                         let mut psf0_rewrite_ci = psf0.clone();
                         let mut psf1_rewrite_ci = psf1.clone();
                         psf0_rewrite_ci.rewrite_with_set(ci);
-                        psf0_rewrite_ci.normalize(&psf_context);
+                        psf0_rewrite_ci.normalize(psf_context);
                         psf0_rewrite_ci = psf0_rewrite_ci.simplify();
                         psf1_rewrite_ci.rewrite_with_set(ci);
-                        psf1_rewrite_ci.normalize(&psf_context);
+                        psf1_rewrite_ci.normalize(psf_context);
                         if !LabeledPLTL::eq_under_ctx(
                             &psf0_rewrite_ci,
                             &psf1_rewrite_ci,
-                            &psf_context,
+                            psf_context,
                         ) {
                             continue 'check_cj;
                         }
@@ -138,7 +135,7 @@ impl<'a> Context<'a> {
     }
 }
 
-impl<'a> Display for Context<'a> {
+impl Display for Context<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.psf_context)?;
         for (i, s) in self.saturated_c_sets.iter().enumerate() {
@@ -259,7 +256,7 @@ impl AllSubAutomatas {
     }
 
     fn makefile_content(&self) -> String {
-        let mut makefile_content = String::new();
+        let mut makefile_content = "default: result.hoa\n".to_string();
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
                 if m_id != 0 {
@@ -360,7 +357,7 @@ impl AllSubAutomatas {
         }
         for (v_item_id, automatas_for_m_set) in self.safety_automatas.iter().enumerate() {
             for (m_set, automata) in automatas_for_m_set.iter().enumerate() {
-                let file_name = format!("safety_{v_item_id}_0b{:b}.hoa", m_set);
+                let file_name = format!("safety_0b{:b}_{v_item_id}.hoa", m_set);
                 result.push((file_name, to_hoa(automata)));
             }
         }
@@ -403,7 +400,7 @@ impl AllSubAutomatas {
 #[cfg(test)]
 mod tests {
 
-    use crate::automata::hoa::output::to_dot;
+    
 
     use super::*;
 

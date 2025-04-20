@@ -80,7 +80,7 @@ impl HoaAutomaton {
     /// body. This function will also unalias the automaton.
     pub fn from_parts(header: Header, body: Body) -> Self {
         let mut out = Self { header, body };
-        out.body.sort_by(|x, y| x.id().cmp(&y.id()));
+        out.body.sort_by_key(|x| x.id());
         out
     }
 

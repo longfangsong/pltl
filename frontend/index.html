@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLTL to DOT Converter</title>
     <script src="https://unpkg.com/@viz-js/viz@3.2.4/lib/viz-standalone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
         body {
@@ -84,12 +85,13 @@
         <label for="pltl-input">Enter PLTL Formula:</label>
         <textarea id="pltl-input" placeholder="Example: a U b"></textarea>
         <button id="convert-btn">Convert to DOT</button>
+        <button id="download-files-btn">Download Dot Files</button>
     </div>
     
     <div id="results"></div>
 
     <script type="module">
-        import init, { to_dots } from './pltl.js';
+        import init, { to_dots, to_files } from './pltl.js';
 
         async function run() {
             // Initialize WebAssembly module
@@ -110,6 +112,22 @@
                 } catch (error) {
                     console.error('Error:', error);
                     alert('Error processing formula: ' + error.message);
+                }
+            });
+            
+            document.getElementById('download-files-btn').addEventListener('click', async () => {
+                const pltlInput = document.getElementById('pltl-input').value.trim();
+                if (!pltlInput) {
+                    alert('Please enter a PLTL formula');
+                    return;
+                }
+                
+                try {
+                    const files = to_files(pltlInput);
+                    await downloadDotFiles(files);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error generating files: ' + error.message);
                 }
             });
         }
@@ -199,6 +217,31 @@
             // Show current tab and add active state
             document.getElementById(tabId).className += ' active';
             evt.currentTarget.className += ' active';
+        }
+
+        async function downloadDotFiles(files) {
+            const zip = new JSZip();
+            
+            // Add each file to the zip
+            for (const [filename, content] of files) {
+                zip.file(filename, content);
+            }
+            
+            // Generate the zip file
+            const blob = await zip.generateAsync({type: "blob"});
+            
+            // Create download link
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.download = 'pltl_automata.zip';
+            
+            // Trigger download
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+            // Clean up
+            URL.revokeObjectURL(downloadLink.href);
         }
 
         run();

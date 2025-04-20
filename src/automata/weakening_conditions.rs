@@ -1,4 +1,3 @@
-use std::iter;
 
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -45,8 +44,7 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
 }
 
 pub fn initial_state(ctx: &Context) -> Vec<LabeledPLTL> {
-    let mut result: Vec<LabeledPLTL> = iter::repeat(LabeledPLTL::Bottom)
-        .take(1 << ctx.psf_context.expand_once.len())
+    let mut result: Vec<LabeledPLTL> = std::iter::repeat_n(LabeledPLTL::Bottom, 1 << ctx.psf_context.expand_once.len())
         .collect();
     result[ctx.psf_context.initial_weaken_state as usize] = LabeledPLTL::Top;
     result

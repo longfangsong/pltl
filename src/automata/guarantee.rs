@@ -4,7 +4,7 @@ use crate::{
     pltl::{
         labeled::{after_function::after_function, LabeledPLTL},
         utils::disjunction_labeled,
-        BinaryOp, UnaryOp,
+        BinaryOp,
     },
     utils::{character_to_label_expression, BitSet, BitSet32, Map, Set},
 };
@@ -12,7 +12,7 @@ use crate::{
 use super::{
     hoa::{
         self,
-        body::{Body, Edge, Label},
+        body::{Edge, Label},
         format::{
             AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceName,
             AcceptanceSignature, Property, StateConjunction,
@@ -90,8 +90,8 @@ fn dump(
         if transitions.contains_key(&(state.clone(), weakening_condition_state.clone())) {
             continue;
         }
-        if !state_id_map.contains_key(&(state.clone(), weakening_condition_state.clone())) {
-            state_id_map.insert((state.clone(), weakening_condition_state.clone()), id);
+        if let std::collections::hash_map::Entry::Vacant(e) = state_id_map.entry((state.clone(), weakening_condition_state.clone())) {
+            e.insert(id);
             id += 1;
         }
         let letter_power_set = BitSet32::power_set_of_size(ctx.pltl_context.atoms.len());
@@ -105,7 +105,7 @@ fn dump(
                     u_item_id,
                     v_set,
                     &state,
-                    &weakening_condition_next_state,
+                    weakening_condition_next_state,
                     letter,
                 );
                 (next_state, weakening_condition_next_state.clone())
@@ -138,7 +138,7 @@ pub fn dump_hoa(
         u_item_id,
         n_set,
         &init_state,
-        &weakening_condition_automata,
+        weakening_condition_automata,
     );
     let mut states = Vec::with_capacity(dump.state_id_map.len());
     for (from, targets) in &dump.transitions {
@@ -200,7 +200,7 @@ mod tests {
     use super::*;
     use crate::{
         automata::{hoa::output::to_hoa, Context},
-        pltl::{labeled::LabeledPLTL, PLTL},
+        pltl::PLTL,
     };
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
                 println!(
                     "  0b{:b} -> {}, <{}>",
                     letter,
-                    target_state.to_string(),
+                    target_state,
                     wc_target_state
                         .iter()
                         .map(|x| x.to_string())

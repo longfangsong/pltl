@@ -1,7 +1,6 @@
 // use super::{BinaryOp, UnaryOp, LabeledPLTLWithoutStrength};
 // use crate::{pltl::rewrite::{Rewrite, RewriteState, STRENGTHEN, WEAKEN}, utils::{BitSet32, Set}};
 
-use std::fmt::Binary;
 
 use crate::{pltl::BinaryOp, utils::{BitSet32, Set}};
 

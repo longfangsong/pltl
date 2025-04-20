@@ -1,5 +1,4 @@
 use crate::pltl;
-use clap::builder::Str;
 use std::{
     fmt,
     ops::{BitAnd, BitOr},
@@ -8,7 +7,7 @@ use std::{
 
 use crate::utils::{BitSet, BitSet32};
 
-use super::{rewrite::RewriteState, BinaryOp, UnaryOp, PLTL};
+use super::{BinaryOp, UnaryOp, PLTL};
 
 pub mod after_function;
 mod forms;
@@ -33,7 +32,7 @@ pub struct Context<'a> {
     pub initial_weaken_state: BitSet32,
 }
 
-impl<'a> fmt::Display for Context<'a> {
+impl fmt::Display for Context<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let max_psf_id_width = self
             .past_subformulas
@@ -212,7 +211,7 @@ impl LabeledPLTL {
         }
     }
 
-    pub fn new<'a>(pltl: &'a PLTL) -> (Self, Context<'a>) {
+    pub fn new(pltl: &PLTL) -> (Self, Context<'_>) {
         let mut context = Context::default();
         let (result, _, _) = Self::from_pltl_impl(pltl, &mut context);
         (result, context)
@@ -220,7 +219,7 @@ impl LabeledPLTL {
 
     pub fn normalize(&mut self, ctx: &Context) {
         if let LabeledPLTL::PastSubformula(psf_id, weaken_state) = self {
-            *weaken_state = ctx.past_subformula_contains[*psf_id as usize] & *weaken_state;
+            *weaken_state &= ctx.past_subformula_contains[*psf_id as usize];
         }
     }
 }

@@ -68,26 +68,26 @@ pub fn to_dot(aut: &HoaAutomaton) -> String {
                 ));
             }
         }
-        dot.push_str("\n");
+        dot.push('\n');
         for edge in &state.edges {
             if edge.2.is_empty() {
                 dot.push_str(&format!(
                     "    {} -> {} [label=\"{}\"]\n",
                     state.id,
                     edge.1,
-                    edge.0 .0.format_with_vars(&aps)
+                    edge.0 .0.format_with_vars(aps)
                 ));
             } else {
                 dot.push_str(&format!(
                     "    {} -> {} [label=\"{}\\n{}\"]\n",
                     state.id,
                     edge.1,
-                    edge.0 .0.format_with_vars(&aps),
+                    edge.0 .0.format_with_vars(aps),
                     edge.2
                 ));
             }
         }
-        dot.push_str("\n");
+        dot.push('\n');
     }
     dot.push_str("}\n");
     dot
@@ -117,7 +117,7 @@ impl Display for HeaderItem {
             HeaderItem::Tool(name, options) => {
                 write!(f, "tool: {} {}", name, options.iter().join(" "))
             }
-            HeaderItem::Name(name) => write!(f, "name: {}", name),
+            HeaderItem::Name(name) => write!(f, "name: \"{}\"", name),
             HeaderItem::Properties(properties) => {
                 write!(f, "properties: {}", properties.iter().join(" "))
             }

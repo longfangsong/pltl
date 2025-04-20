@@ -1,7 +1,7 @@
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    pltl::{labeled::info::psf_weaken_condition, utils::disjunction, BinaryOp, UnaryOp},
+    pltl::{labeled::info::psf_weaken_condition, BinaryOp, UnaryOp},
     utils::{BitSet, BitSet32, Set},
 };
 

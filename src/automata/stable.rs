@@ -68,8 +68,8 @@ fn dump(
         if transitions.contains_key(&(state_0.clone(), state_1.clone(), weakening_condition_state.clone())) {
             continue;
         }
-        if !state_id_map.contains_key(&(state_0.clone(), state_1.clone(), weakening_condition_state.clone())) {
-            state_id_map.insert((state_0.clone(), state_1.clone(), weakening_condition_state.clone()), id);
+        if let std::collections::hash_map::Entry::Vacant(e) = state_id_map.entry((state_0.clone(), state_1.clone(), weakening_condition_state.clone())) {
+            e.insert(id);
             id += 1;
         }
         let letter_power_set = BitSet32::power_set_of_size(ctx.pltl_context.atoms.len());
@@ -82,7 +82,7 @@ fn dump(
                     ctx,
                     m_set,
                     &(state_0.clone(), state_1.clone()),
-                    &weakening_condition_next_state,
+                    weakening_condition_next_state,
                     letter,
                 );
                 (next_state.0, next_state.1, weakening_condition_next_state.clone())
@@ -156,7 +156,7 @@ pub fn dump_hoa(
 
 #[cfg(test)]
 mod tests {
-    use crate::{automata::{hoa::output::to_hoa, Context}, pltl::{labeled::LabeledPLTL, PLTL}};
+    use crate::{automata::{hoa::output::to_hoa, Context}, pltl::PLTL};
     use super::*;
 
     #[test]
@@ -173,7 +173,7 @@ mod tests {
         for ((state_0, state_1, wc_state), transitions) in &dump.transitions {
             println!("{}, {}, <{}>", state_0, state_1, wc_state.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "));
             for (letter, (target_state_0, target_state_1, wc_target_state)) in transitions.iter().enumerate() {
-                println!("  0b{:b} -> {}, {}, <{}>", letter, target_state_0.to_string(), target_state_1.to_string(), wc_target_state.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "));
+                println!("  0b{:b} -> {}, {}, <{}>", letter, target_state_0, target_state_1, wc_target_state.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "));
             }
         }
         let hoa = dump_hoa(&ctx, 0, &weakening_condition_automata);

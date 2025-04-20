@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_rewrite_with_set() {
         let (ltl, mut ctx) = PLTL::from_string("a S b").unwrap();
-        let the_set = Set::from_iter([ltl].into_iter());
+        let the_set = Set::from_iter([ltl]);
 
         let mut ltl = PLTL::from_string_increment(
             "(Y (a S b)) | (~Y (a S b)) | (Y (a ~S b)) | (a S b) | (a ~S b)",

@@ -188,19 +188,16 @@ impl fmt::Display for BinaryOp {
 
 /// Represents a Linear Temporal Logic with Past (PLTL) formula.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum PLTL {
     Top,
+    #[default]
     Bottom,
     Atom(u32),
     Unary(UnaryOp, Box<PLTL>),
     Binary(BinaryOp, Box<PLTL>, Box<PLTL>),
 }
 
-impl Default for PLTL {
-    fn default() -> Self {
-        PLTL::Bottom
-    }
-}
 
 impl BitAnd for PLTL {
     type Output = Self;

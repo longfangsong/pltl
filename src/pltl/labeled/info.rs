@@ -1,4 +1,3 @@
-use std::fmt::Binary;
 
 use crate::{
     pltl::{BinaryOp, UnaryOp},
@@ -21,7 +20,7 @@ impl LabeledPLTL {
             }
             LabeledPLTL::PastSubformula(id, _) => {
                 // todo: push down state?
-                ctx.past_subformula_contains[*id as usize].clone()
+                ctx.past_subformula_contains[*id as usize]
             }
         }
     }
@@ -33,7 +32,7 @@ impl LabeledPLTL {
             LabeledPLTL::Binary(_, lhs, rhs) => lhs
                 .past_subformulas(ctx)
                 .into_iter()
-                .chain(rhs.past_subformulas(ctx).into_iter())
+                .chain(rhs.past_subformulas(ctx))
                 .collect(),
             LabeledPLTL::PastSubformula(id, state) => ctx.past_subformula_contains[*id as usize]
                 .iter()
