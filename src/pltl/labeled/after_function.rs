@@ -1,7 +1,7 @@
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    pltl::{labeled::info::psf_weaken_condition, BinaryOp, UnaryOp},
+    pltl::{labeled::info::{psf_weaken_condition, weaken_condition}, BinaryOp, UnaryOp},
     utils::{BitSet, BitSet32, Set},
 };
 
@@ -64,6 +64,8 @@ pub fn local_after(
                 LabeledPLTL::Top
             }
         }
+        LabeledPLTL::Unary(UnaryOp::Yesterday, _) => LabeledPLTL::Bottom,
+        LabeledPLTL::Unary(UnaryOp::WeakYesterday, _) => LabeledPLTL::Top,
         LabeledPLTL::Unary(unary_op, box content) => {
             debug_assert_eq!(unary_op, &UnaryOp::Next);
             local_post_update(ctx, content, letter, past_st)
@@ -128,6 +130,16 @@ pub fn local_after(
                 }
             }
         }
+        LabeledPLTL::Binary(
+            BinaryOp::Since | BinaryOp::WeakSince | BinaryOp::BackTo | BinaryOp::WeakBackTo,
+            _,
+            _,
+        ) => local_after(
+            ctx,
+            &weaken_condition(ctx, f),
+            letter,
+            past_st,
+        ),
         LabeledPLTL::PastSubformula(psf_id, inner_weaken_state) => {
             let expand_once = &ctx.expand_once[*psf_id as usize];
             match expand_once {
@@ -146,7 +158,6 @@ pub fn local_after(
                 _ => unreachable!(),
             }
         }
-        _ => unreachable!(),
     }
 }
 
@@ -179,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_after_function() {
-        let (pltl, ctx) = PLTL::from_string("F q").unwrap();
+        let (pltl, ctx) = PLTL::from_string("G p | F (p S q) & (r B s)").unwrap();
         let pltl = pltl.to_no_fgoh().to_negation_normal_form();
         let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
         println!("{}", ctx);

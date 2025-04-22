@@ -1,6 +1,9 @@
 use std::fmt::{self, Display};
 
-use hoa::{output::{to_dot, to_hoa}, HoaAutomaton};
+use hoa::{
+    output::{to_dot, to_hoa},
+    HoaAutomaton,
+};
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -370,43 +373,68 @@ impl AllSubAutomatas {
         result
     }
 
-    pub fn to_dots(&self, ctx: &Context) -> (Vec<(String, String)>, Vec<(String, String)>, Vec<(String, String)>) {
+    pub fn to_dots(
+        &self,
+        ctx: &Context,
+    ) -> (
+        Vec<(String, String)>,
+        Vec<(String, String)>,
+        Vec<(String, String)>,
+    ) {
         let mut guarantee_dots = Vec::new();
         let mut safety_dots = Vec::new();
         let mut stable_dots = Vec::new();
         for (u_item_id, automatas_for_n_set) in self.guarantee_automatas.iter().enumerate() {
             for (n_set, automata) in automatas_for_n_set.iter().enumerate() {
                 let psi = ctx.u_items[u_item_id].format(&ctx.psf_context, &ctx.pltl_context);
-                let n_items = ctx.n_sets[n_set].iter().map(|pltl| pltl.format(&ctx.psf_context, &ctx.pltl_context)).collect::<Vec<_>>().join(", ");
-                guarantee_dots.push((format!("\\psi={psi}, N=\\{{{n_items}\\}}"), to_dot(automata)));
+                let n_items = ctx.n_sets[n_set]
+                    .iter()
+                    .map(|pltl| pltl.format(&ctx.psf_context, &ctx.pltl_context))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                guarantee_dots.push((
+                    format!("\\psi={psi}, N=\\{{{n_items}\\}}"),
+                    to_dot(automata),
+                ));
             }
         }
         for (v_item_id, automatas_for_m_set) in self.safety_automatas.iter().enumerate() {
             for (m_set, automata) in automatas_for_m_set.iter().enumerate() {
                 let psi = ctx.v_items[v_item_id].format(&ctx.psf_context, &ctx.pltl_context);
-                let m_items = ctx.m_sets[m_set].iter().map(|pltl| pltl.format(&ctx.psf_context, &ctx.pltl_context)).collect::<Vec<_>>().join(", ");
-                safety_dots.push((format!("\\psi={psi}, M=\\{{{m_items}\\}}"), to_dot(automata)));
+                let m_items = ctx.m_sets[m_set]
+                    .iter()
+                    .map(|pltl| pltl.format(&ctx.psf_context, &ctx.pltl_context))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                safety_dots.push((
+                    format!("\\psi={psi}, M=\\{{{m_items}\\}}"),
+                    to_dot(automata),
+                ));
             }
         }
         for (m_set, automata) in self.stable_automatas.iter().enumerate() {
-            let m_items = ctx.m_sets[m_set].iter().map(|pltl| pltl.format(&ctx.psf_context, &ctx.pltl_context)).collect::<Vec<_>>().join(", ");
+            let m_items = ctx.m_sets[m_set]
+                .iter()
+                .map(|pltl| pltl.format(&ctx.psf_context, &ctx.pltl_context))
+                .collect::<Vec<_>>()
+                .join(", ");
             stable_dots.push((format!("M=\\{{{m_items}\\}}"), to_dot(automata)));
         }
         (guarantee_dots, safety_dots, stable_dots)
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-
-    
-
     use super::*;
 
     #[test]
     fn test_to_files() {
-        let (ltl, ltl_ctx) = PLTL::from_string("G p | F q | G r").unwrap();
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("G p | F (p S q) & (r B s)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {}", ltl);
         let ctx = Context::new(&ltl, ltl_ctx);

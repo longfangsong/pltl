@@ -142,7 +142,7 @@ pub fn dump_hoa(
             HeaderItem::Name(format!("stable_0b{:b}", m_set)),
             HeaderItem::Start(StateConjunction::singleton(dump.state_id_map[&(init_state.0.clone(), init_state.1.clone(), weakening_condition_automata.init_state.clone())] as _)),
             HeaderItem::AcceptanceName(AcceptanceName::CoBuchi, vec![AcceptanceInfo::Int(1)]),
-            HeaderItem::Acceptance(1, AcceptanceCondition::Inf(AcceptanceAtom::Positive(0))),
+            HeaderItem::Acceptance(1, AcceptanceCondition::Fin(AcceptanceAtom::Positive(0))),
             HeaderItem::Properties(vec![
                 Property::Deterministic,
                 Property::Complete,
@@ -167,7 +167,6 @@ mod tests {
         let ctx = Context::new(&ltl, ltl_ctx);
         println!("ctx: {}", ctx);
         let init_state = initial_state(&ctx, 0);
-        let weakening_condition_init_state = weakening_conditions::initial_state(&ctx);
         let weakening_condition_automata = weakening_conditions::dump(&ctx);
         let dump = dump(&ctx, 0, &init_state, &weakening_condition_automata);
         for ((state_0, state_1, wc_state), transitions) in &dump.transitions {

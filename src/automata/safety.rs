@@ -155,7 +155,7 @@ pub fn dump_hoa(
             HeaderItem::Name(format!("safety_{}_0b{:b}", v_item_id, m_set)),
             HeaderItem::Start(StateConjunction::singleton(dump.state_id_map[&(init_state.clone(), weakening_condition_automata.init_state.clone())] as _)),
             HeaderItem::AcceptanceName(AcceptanceName::CoBuchi, vec![AcceptanceInfo::Int(1)]),
-            HeaderItem::Acceptance(1, AcceptanceCondition::Inf(AcceptanceAtom::Positive(0))),
+            HeaderItem::Acceptance(1, AcceptanceCondition::Fin(AcceptanceAtom::Positive(0))),
             HeaderItem::Properties(vec![
                 Property::Deterministic,
                 Property::Complete,

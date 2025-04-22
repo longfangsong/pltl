@@ -205,38 +205,38 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string("G p | F q").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("G (p | Y (q & H r)) | F (p S (q B (r S t))) & (r B (p S (p U r)))").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {}", ltl);
         let ctx = Context::new(&ltl, ltl_ctx);
         println!("ctx: {}", ctx);
-        let init_state = initial_state(&ctx, 0, 0);
-        let weakening_condition_automata = weakening_conditions::dump(&ctx);
-        let dump = dump(&ctx, 0, 0, &init_state, &weakening_condition_automata);
-        for ((state, wc_state), transitions) in &dump.transitions {
-            println!(
-                "{}, <{}>",
-                state,
-                wc_state
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            for (letter, (target_state, wc_target_state)) in transitions.iter().enumerate() {
-                println!(
-                    "  0b{:b} -> {}, <{}>",
-                    letter,
-                    target_state,
-                    wc_target_state
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
-        let hoa = dump_hoa(&ctx, 0, 0,&weakening_condition_automata);
-        println!("{}", to_hoa(&hoa));
+        // let init_state = initial_state(&ctx, 0, 0);
+        // let weakening_condition_automata = weakening_conditions::dump(&ctx);
+        // let dump = dump(&ctx, 0, 0, &init_state, &weakening_condition_automata);
+        // for ((state, wc_state), transitions) in &dump.transitions {
+        //     println!(
+        //         "{}, <{}>",
+        //         state,
+        //         wc_state
+        //             .iter()
+        //             .map(|x| x.to_string())
+        //             .collect::<Vec<_>>()
+        //             .join(", ")
+        //     );
+        //     for (letter, (target_state, wc_target_state)) in transitions.iter().enumerate() {
+        //         println!(
+        //             "  0b{:b} -> {}, <{}>",
+        //             letter,
+        //             target_state,
+        //             wc_target_state
+        //                 .iter()
+        //                 .map(|x| x.to_string())
+        //                 .collect::<Vec<_>>()
+        //                 .join(", ")
+        //         );
+        //     }
+        // }
+        // let hoa = dump_hoa(&ctx, 0, 0,&weakening_condition_automata);
+        // println!("{}", to_hoa(&hoa));
     }
 }
