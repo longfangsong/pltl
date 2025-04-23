@@ -13,7 +13,8 @@ fn local_post_update(
     letter: BitSet32,
     past_st: BitSet32,
 ) -> LabeledPLTL {
-    let first_part = f.clone();
+    let mut first_part = f.clone();
+    first_part.rewrite_with_set(past_st);
     let psfs = f.past_subformulas(ctx);
     let past_st_with_state: Set<(u32, BitSet32)> = past_st.iter().map(|id| {
         (id, ctx.initial_weaken_state & ctx.past_subformula_contains[id as usize])
@@ -28,7 +29,6 @@ fn local_post_update(
             let inner_result = local_after(
                 ctx,
                 &psf_in_correct_form_weaken_condition,
-                // Some(strength),
                 letter,
                 past_st,
             );
@@ -164,7 +164,8 @@ pub fn local_after(
 pub fn after_function(ctx: &Context, f: &LabeledPLTL, letter: BitSet32) -> LabeledPLTL {
     let psf_without_state = f.past_subformulas_without_state(ctx);
     let mut psf_powerset = psf_without_state.sub_power_set();
-    let mut result = local_after(ctx, f, letter, psf_powerset.pop().unwrap());
+    let psf = psf_powerset.pop().unwrap();
+    let mut result = local_after(ctx, f, letter, psf);
     if result == LabeledPLTL::Top {
         return result;
     }
@@ -190,23 +191,20 @@ mod tests {
 
     #[test]
     fn test_after_function() {
-        let (pltl, ctx) = PLTL::from_string("G p | F (p S q) & (r B s)").unwrap();
-        let pltl = pltl.to_no_fgoh().to_negation_normal_form();
+        let (pltl, ctx) = PLTL::from_string("G (p | Y q)").unwrap();
+        let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
         let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
-        println!("{}", ctx);
-        println!("{}", context);
+        // println!("{}", ctx);
+        // println!("{}", context);
 
-        println!("{}", labeled_pltl);
-        let letter = 0b00; // {}
-        let past_st = 0b00;
-        let result = local_after(
-            &context,
-            &labeled_pltl,
-            letter,
-            past_st,
-        );
-        println!("{}", result);
-        let result = after_function(&context, &labeled_pltl, letter);
-        println!("{}, {}", result, result.clone().simplify());
+        // println!("{}", labeled_pltl);
+        // println!("===");
+        // fixme: 00 and 10, 01 and 11 should give different results
+        for letter in 0..4 {
+            println!("===");
+            let result = after_function(&context, &labeled_pltl, letter);
+            println!("ch={:02b},result={}", letter, result.simplify());
+            println!("===");
+        }
     }
 }

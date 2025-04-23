@@ -152,7 +152,7 @@ pub fn dump_hoa(
     HoaAutomaton::from_parts(
         Header::from_vec(vec![
             HeaderItem::v1(),
-            HeaderItem::Name(format!("safety_{}_0b{:b}", v_item_id, m_set)),
+            HeaderItem::Name(format!("safety_0b{:b}_{v_item_id}", m_set)),
             HeaderItem::Start(StateConjunction::singleton(dump.state_id_map[&(init_state.clone(), weakening_condition_automata.init_state.clone())] as _)),
             HeaderItem::AcceptanceName(AcceptanceName::CoBuchi, vec![AcceptanceInfo::Int(1)]),
             HeaderItem::Acceptance(1, AcceptanceCondition::Fin(AcceptanceAtom::Positive(0))),

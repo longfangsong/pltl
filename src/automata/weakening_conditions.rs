@@ -93,7 +93,8 @@ mod tests {
 
     #[test]
     fn test_dump() {
-        let (ltl, ltl_ctx) = PLTL::from_string("Y (p ~S q)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("G (p | Y q)").unwrap();
+        let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let ctx = Context::new(&ltl, ltl_ctx);
         println!("ctx: {}", ctx );
         let dump = dump(&ctx);
