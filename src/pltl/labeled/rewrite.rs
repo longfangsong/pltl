@@ -1,212 +1,238 @@
-// use super::{BinaryOp, UnaryOp, LabeledPLTLWithoutStrength};
-// use crate::{pltl::rewrite::{Rewrite, RewriteState, STRENGTHEN, WEAKEN}, utils::{BitSet32, Set}};
+use crate::utils::{BitSet, BitSet32, Set};
 
-
-use crate::{pltl::BinaryOp, utils::{BitSet32, Set}};
-
-use super::{Context, LabeledPLTL};
+use super::LabeledPLTL;
 
 impl LabeledPLTL {
-    pub fn rewrite_with_set(&mut self, set: BitSet32) {
+    pub fn c_rewrite(self, set: BitSet32) -> Self {
         match self {
-            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) => (),
-            LabeledPLTL::Unary(_, labeled_pltl) => {
-                labeled_pltl.rewrite_with_set(set);
+            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_) => {
+                self
             }
-            LabeledPLTL::Binary(_, lhs, rhs) => {
-                lhs.rewrite_with_set(set);
-                rhs.rewrite_with_set(set);
+            LabeledPLTL::Yesterday { id, weak, content } => LabeledPLTL::Yesterday {
+                id,
+                weak: set.get(id),
+                content: Box::new(content.c_rewrite(set)),
+            },
+            LabeledPLTL::Next(labeled_pltl) => {
+                LabeledPLTL::Next(Box::new(labeled_pltl.c_rewrite(set)))
             }
-            LabeledPLTL::PastSubformula(_, weaken_state) => {
-                *weaken_state = set;
-            }
+            LabeledPLTL::Logical(binary_op, content) => LabeledPLTL::Logical(
+                binary_op,
+                content
+                    .into_iter()
+                    .map(|item| item.c_rewrite(set))
+                    .collect(),
+            ),
+            LabeledPLTL::Until { weak, lhs, rhs } => LabeledPLTL::Until {
+                weak,
+                lhs: Box::new(lhs.c_rewrite(set)),
+                rhs: Box::new(rhs.c_rewrite(set)),
+            },
+            LabeledPLTL::Release { weak, lhs, rhs } => LabeledPLTL::Release {
+                weak,
+                lhs: Box::new(lhs.c_rewrite(set)),
+                rhs: Box::new(rhs.c_rewrite(set)),
+            },
+            LabeledPLTL::BinaryTemporal {
+                id,
+                op,
+                weak,
+                lhs,
+                rhs,
+            } => LabeledPLTL::BinaryTemporal {
+                id,
+                op,
+                weak: set.get(id),
+                lhs: Box::new(lhs.c_rewrite(set)),
+                rhs: Box::new(rhs.c_rewrite(set)),
+            },
         }
     }
 
-    pub fn v_rewrite(&mut self, m: &Set<LabeledPLTL>, ctx: &Context) {
-        let contains = matches!(self, LabeledPLTL::Binary(BinaryOp::Until | BinaryOp::MightyRelease, _, _)) && m.contains(self);
+    pub fn v_rewrite(self, m: &Set<LabeledPLTL>) -> Self {
+        let contains = matches!(
+            self,
+            LabeledPLTL::Until { .. } | LabeledPLTL::Release { .. }
+        ) && m.contains(&self);
         match self {
-            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) => (),
-            LabeledPLTL::Unary(_, content) => content.v_rewrite(m, ctx),
-            LabeledPLTL::Binary(op @ BinaryOp::Until, lhs, rhs) => {
+            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_) => {
+                self
+            }
+            LabeledPLTL::Yesterday { id, weak, content } => LabeledPLTL::Yesterday {
+                id,
+                weak,
+                content: Box::new(content.v_rewrite(m)),
+            },
+            LabeledPLTL::Next(labeled_pltl) => {
+                LabeledPLTL::Next(Box::new(labeled_pltl.v_rewrite(m)))
+            }
+            LabeledPLTL::Logical(op, content) => LabeledPLTL::Logical(
+                op,
+                content.into_iter().map(|item| item.v_rewrite(m)).collect(),
+            ),
+            LabeledPLTL::Until { weak, lhs, rhs } | LabeledPLTL::Release { weak, lhs, rhs } => {
                 if contains {
-                    lhs.v_rewrite(m, ctx);
-                    rhs.v_rewrite(m, ctx);
-                    *op = BinaryOp::WeakUntil;
+                    LabeledPLTL::Until {
+                        weak: true,
+                        lhs: Box::new(lhs.v_rewrite(m)),
+                        rhs: Box::new(rhs.v_rewrite(m)),
+                    }
                 } else {
-                    *self = LabeledPLTL::Bottom;
+                    LabeledPLTL::Bottom
                 }
             }
-            LabeledPLTL::Binary(op @ BinaryOp::MightyRelease, lhs, rhs) => {
-                if contains {
-                    lhs.v_rewrite(m, ctx);
-                    rhs.v_rewrite(m, ctx);
-                    *op = BinaryOp::Release;
-                } else {
-                    *self = LabeledPLTL::Bottom;
-                }
-            }
-            LabeledPLTL::Binary(_, lhs, rhs) => {
-                lhs.v_rewrite(m, ctx);
-                rhs.v_rewrite(m, ctx);
-            }
-            LabeledPLTL::PastSubformula(id, state) => {
-                let mut psf = ctx.expand_once[*id as usize].clone();
-                psf.set_is_weak(*state);
-                psf.v_rewrite(m, ctx);
-                *self = psf;
-            }
+            LabeledPLTL::BinaryTemporal {
+                lhs,
+                rhs,
+                id,
+                op,
+                weak,
+            } => LabeledPLTL::BinaryTemporal {
+                id,
+                lhs: Box::new(lhs.v_rewrite(m)),
+                rhs: Box::new(rhs.v_rewrite(m)),
+                op,
+                weak,
+            },
         }
     }
 
-    pub fn u_rewrite(&mut self, n: &Set<LabeledPLTL>, ctx: &Context) {
-        let contains = matches!(self, LabeledPLTL::Binary(BinaryOp::Until | BinaryOp::MightyRelease, _, _)) && n.contains(self);
+    pub fn u_rewrite(self, n: &Set<LabeledPLTL>) -> Self {
+        let contains = matches!(
+            self,
+            LabeledPLTL::Until { .. } | LabeledPLTL::Release { .. }
+        ) && n.contains(&self);
         match self {
-            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) => (),
-            LabeledPLTL::Unary(_, content) => content.u_rewrite(n, ctx),
-            LabeledPLTL::Binary(op @ BinaryOp::WeakUntil, lhs, rhs) => {
+            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_) => {
+                self
+            }
+            LabeledPLTL::Yesterday { id, weak, content } => LabeledPLTL::Yesterday {
+                id,
+                weak,
+                content: Box::new(content.u_rewrite(n)),
+            },
+            LabeledPLTL::Next(labeled_pltl) => {
+                LabeledPLTL::Next(Box::new(labeled_pltl.u_rewrite(n)))
+            }
+            LabeledPLTL::Logical(op, content) => LabeledPLTL::Logical(
+                op,
+                content.into_iter().map(|item| item.u_rewrite(n)).collect(),
+            ),
+            LabeledPLTL::Until { weak, lhs, rhs } | LabeledPLTL::Release { weak, lhs, rhs } => {
                 if contains {
-                    lhs.u_rewrite(n, ctx);
-                    rhs.u_rewrite(n, ctx);
-                    *op = BinaryOp::Until;
+                    LabeledPLTL::Top
+                } else {
+                    LabeledPLTL::Until {
+                        weak,
+                        lhs: Box::new(lhs.u_rewrite(n)),
+                        rhs: Box::new(rhs.u_rewrite(n)),
+                    }
                 }
             }
-            LabeledPLTL::Binary(op @ BinaryOp::Release, lhs, rhs) => {
-                if contains {
-                    lhs.u_rewrite(n, ctx);
-                    rhs.u_rewrite(n, ctx);
-                    *op = BinaryOp::MightyRelease;
-                }
-            }
-            LabeledPLTL::Binary(_, lhs, rhs) => {
-                lhs.u_rewrite(n, ctx);
-                rhs.u_rewrite(n, ctx);
-            }
-            LabeledPLTL::PastSubformula(id, state) => {
-                let mut psf = ctx.expand_once[*id as usize].clone();
-                psf.set_is_weak(*state);
-                psf.u_rewrite(n, ctx);
-                *self = psf;
-            }
+            LabeledPLTL::BinaryTemporal {
+                id,
+                op,
+                weak,
+                lhs,
+                rhs,
+            } => LabeledPLTL::BinaryTemporal {
+                id,
+                op,
+                weak,
+                lhs: Box::new(lhs.u_rewrite(n)),
+                rhs: Box::new(rhs.u_rewrite(n)),
+            },
         }
     }
 }
 
-// impl LabeledPLTLWithoutStrength {
-//     pub fn weaken(&mut self) -> &mut Self {
-//         self.rewrite(WEAKEN)
-//     }
+#[cfg(test)]
+mod tests {
 
-//     pub fn strengthen(&mut self) -> &mut Self {
-//         self.rewrite(STRENGTHEN)
-//     }
+    #[test]
+    fn test_rewrite() {
+        // let (pltl, pltl_ctx) = PLTL::from_string("a U (b S (c U d))").unwrap();
+        // let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
+        // let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
+        // let mut m = Set::default();
+        // m.insert(labeled_pltl.clone());
+        // let inner = if let LabeledPLTL::Binary(_, _, rhs) = &labeled_pltl {
+        //     if let LabeledPLTL::LabeledPastSubformula { id, weaken_state, content } = rhs.as_ref() {
+        //         if let LabeledPLTL::Binary(_, _, rhs) = content.as_ref() {
+        //             rhs.deref().clone()
+        //         } else {
+        //             unreachable!()
+        //         }
+        //     } else {
+        //         unreachable!()
+        //     }
+        // } else {
+        //     unreachable!()
+        // };
+        // m.insert(inner);
 
-//     pub fn weaken_state(&self) -> RewriteState {
-//         match self {
-//             LabeledPLTLWithoutStrength::PastSubformula(_, weaken_state) => *weaken_state,
-//             _ => unreachable!("Must be past formula"),
-//         }
-//     }
+        // let mut labeled_pltl = labeled_pltl;
+        // labeled_pltl.v_rewrite(&m);
+        // assert_eq!(labeled_pltl.format(&context, &pltl_ctx), "(a W <0, 0b0, (b S (c W d))>)");
 
-//     pub fn rewrite(&mut self, rewrite: Rewrite) -> &mut Self {
-//         match self {
-//             LabeledPLTLWithoutStrength::PastSubformula(_, weaken_state) => {
-//                 *weaken_state = rewrite;
-//             }
-//             _ => (),
-//         }
-//         self
-//     }
+        // labeled_pltl.c_rewrite(0b1);
+        // assert_eq!(labeled_pltl.format(&context, &pltl_ctx), "(a W <0, 0b1, (b S (c W d))>)");
 
-//     pub fn rewrite_with_set(&mut self, set: PastSubformulaSet) -> &mut Self {
-//         match self {
-//             LabeledPLTLWithoutStrength::PastSubformula(_, weaken_state) => {
-//                 *weaken_state = rewrite;
-//             }
-//             _ => (),
-//         }
-//         self
-//     }
+        // let (pltl, pltl_ctx) = PLTL::from_string("a U (b S (c U (Y d)))").unwrap();
+        // let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
+        // let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
+        // println!("{}", labeled_pltl);
+        // println!("{}", context);
 
-//     pub fn weaken_condition(&self) -> Self {
-//         match self {
-//             LabeledPLTLWithoutStrength::Unary(UnaryOp::Yesterday, box content) => content.clone(),
-//             LabeledPLTLWithoutStrength::Binary(BinaryOp::Since, _, box rhs) => rhs.clone(),
-//             LabeledPLTLWithoutStrength::Binary(BinaryOp::BackTo, box lhs, box rhs) => {
-//                 LabeledPLTLWithoutStrength::new_binary(BinaryOp::And, lhs.clone(), rhs.clone())
-//             }
-//             LabeledPLTLWithoutStrength::Unary(UnaryOp::WeakYesterday, box content) => content.clone(),
-//             LabeledPLTLWithoutStrength::Binary(BinaryOp::WeakSince, box lhs, box rhs) => {
-//                 LabeledPLTLWithoutStrength::new_binary(BinaryOp::Or, lhs.clone(), rhs.clone())
-//             }
-//             LabeledPLTLWithoutStrength::Binary(BinaryOp::WeakBackTo, _, box rhs) => rhs.clone(),
-//             _ => unreachable!("Must be past formula"),
-//         }
-//     }
+        // let mut m = Set::default();
+        // m.insert(labeled_pltl.clone());
 
-//     pub fn v_rewrite(&mut self, m: &Set<LabeledPLTLWithoutStrength>) -> &mut Self {
-//         let in_set = matches!(self, LabeledPLTLWithoutStrength::Binary(_, _, _)) && m.contains(self);
-//         match self {
-//             LabeledPLTLWithoutStrength::Top | LabeledPLTLWithoutStrength::Bottom | LabeledPLTLWithoutStrength::Atom(_) => (),
-//             LabeledPLTLWithoutStrength::Unary(_, annotated) => {
-//                 annotated.v_rewrite(m);
-//             }
-//             LabeledPLTLWithoutStrength::Binary(op @ BinaryOp::Until, box lhs, box rhs) => {
-//                 if in_set {
-//                     lhs.v_rewrite(m);
-//                     rhs.v_rewrite(m);
-//                     *op = BinaryOp::WeakUntil;
-//                 } else {
-//                     *self = Self::Bottom;
-//                 }
-//             }
-//             LabeledPLTLWithoutStrength::Binary(op @ BinaryOp::MightyRelease, box lhs, box rhs) => {
-//                 if in_set {
-//                     lhs.v_rewrite(m);
-//                     rhs.v_rewrite(m);
-//                     *op = BinaryOp::Release;
-//                 } else {
-//                     *self = Self::Bottom;
-//                 }
-//             }
-//             LabeledPLTLWithoutStrength::Binary(_, box lhs, box rhs) => {
-//                 lhs.v_rewrite(m);
-//                 rhs.v_rewrite(m);
-//             }
-//         }
-//         self
-//     }
-
-//     pub fn u_rewrite(&mut self, n: &Set<LabeledPLTLWithoutStrength>) -> &mut Self {
-//         let in_set = matches!(self, LabeledPLTLWithoutStrength::Binary(_, _, _)) && n.contains(self);
-//         match self {
-//             LabeledPLTLWithoutStrength::Top | LabeledPLTLWithoutStrength::Bottom | LabeledPLTLWithoutStrength::Atom(_) => (),
-//             LabeledPLTLWithoutStrength::Unary(_, annotated) => {
-//                 annotated.u_rewrite(n);
-//             }
-//             LabeledPLTLWithoutStrength::Binary(op @ BinaryOp::WeakUntil, box lhs, box rhs) => {
-//                 if in_set {
-//                     *self = Self::Top;
-//                 } else {
-//                     lhs.u_rewrite(n);
-//                     rhs.u_rewrite(n);
-//                     *op = BinaryOp::Until;
-//                 }
-//             }
-//             LabeledPLTLWithoutStrength::Binary(op @ BinaryOp::Release, box lhs, box rhs) => {
-//                 if in_set {
-//                     *self = Self::Top;
-//                 } else {
-//                     lhs.u_rewrite(n);
-//                     rhs.u_rewrite(n);
-//                     *op = BinaryOp::MightyRelease;
-//                 }
-//             }
-//             LabeledPLTLWithoutStrength::Binary(_, box lhs, box rhs) => {
-//                 lhs.u_rewrite(n);
-//                 rhs.u_rewrite(n);
-//             }
-//         }
-//         self
-//     }
-// }
+        // let mut labeled_pltl = labeled_pltl;
+        // labeled_pltl.c_rewrite(0b01);
+        // labeled_pltl.push_down_weaken_state();
+        // labeled_pltl.normalize(&context);
+        // println!("{}", labeled_pltl);
+        // println!("{}", labeled_pltl.format(&context, &pltl_ctx));
+        // println!(
+        //     "{}",
+        //     if let LabeledPLTL::Binary(_, _, rhs) = &labeled_pltl {
+        //         if let LabeledPLTL::LabeledPastSubformula { content, .. } = rhs.as_ref() {
+        //             if let LabeledPLTL::Binary(_, _, rhs) = content.as_ref() {
+        //                 rhs
+        //             } else {
+        //                 unreachable!()
+        //             }
+        //         } else {
+        //             unreachable!()
+        //         }
+        //     } else {
+        //         unreachable!()
+        //     }
+        // );
+        // let inner = if let LabeledPLTL::Binary(_, _, rhs) = &labeled_pltl {
+        //     if let LabeledPLTL::LabeledPastSubformula {
+        //         id,
+        //         weaken_state,
+        //         content,
+        //     } = rhs.as_ref()
+        //     {
+        //         if let LabeledPLTL::Binary(_, _, rhs) = content.as_ref() {
+        //             if let LabeledPLTL::Binary(_, _, rhs) = rhs.as_ref() {
+        //                 rhs.deref().clone()
+        //             } else {
+        //                 unreachable!()
+        //             }
+        //         } else {
+        //             unreachable!()
+        //         }
+        //     } else {
+        //         unreachable!()
+        //     }
+        // } else {
+        //     unreachable!()
+        // };
+        // println!("{}", inner);
+        // println!("{}", inner.format(&context, &pltl_ctx));
+        // // m.insert(inner);
+    }
+}

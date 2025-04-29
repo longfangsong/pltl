@@ -1,10 +1,9 @@
+use super::Id;
 use std::{
     borrow::Borrow,
     fmt::Display,
     ops::{Deref, Rem},
 };
-
-use super::Id;
 
 /// Represents a conjunction over states of a HOA automaton, this
 /// is mostly used as the initial state of the automaton.

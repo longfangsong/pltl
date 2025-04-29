@@ -136,11 +136,15 @@ impl PLTL {
 
             PLTL::Unary(UnaryOp::Next, box PLTL::Bottom) => (PLTL::Bottom, false),
             PLTL::Unary(UnaryOp::Next, box PLTL::Top) => (PLTL::Top, false),
-            PLTL::Unary(UnaryOp::Next, box PLTL::Unary(UnaryOp::Yesterday, content)) => (content.simplify(), false),
+            PLTL::Unary(UnaryOp::Next, box PLTL::Unary(UnaryOp::Yesterday, content)) => {
+                (content.simplify(), false)
+            }
             PLTL::Unary(UnaryOp::Next, content) => {
                 let content_simplified = content.simplify();
-                let may_go_to_other_branch =
-                    matches!(&content_simplified, PLTL::Bottom | PLTL::Top | PLTL::Unary(UnaryOp::Yesterday, _));
+                let may_go_to_other_branch = matches!(
+                    &content_simplified,
+                    PLTL::Bottom | PLTL::Top | PLTL::Unary(UnaryOp::Yesterday, _)
+                );
                 (
                     PLTL::new_unary(UnaryOp::Next, content_simplified),
                     may_go_to_other_branch,
@@ -552,8 +556,6 @@ impl PLTL {
 #[cfg(test)]
 mod tests {
     use crate::pltl::ganerator::generate_formula;
-
-    
 
     // #[test]
     // fn test_simplify() {

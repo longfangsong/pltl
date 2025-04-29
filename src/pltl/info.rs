@@ -22,6 +22,9 @@ impl UnaryOp {
     pub fn is_v_type(&self) -> bool {
         matches!(self, UnaryOp::Next)
     }
+    pub fn is_weak_past(&self) -> bool {
+        *self == UnaryOp::WeakYesterday
+    }
 }
 
 impl BinaryOp {
@@ -49,6 +52,9 @@ impl BinaryOp {
     }
     pub fn is_v_type(&self) -> bool {
         matches!(self, BinaryOp::WeakUntil | BinaryOp::Release)
+    }
+    pub fn is_weak_past(&self) -> bool {
+        *self == BinaryOp::WeakBackTo || *self == BinaryOp::WeakSince
     }
 }
 

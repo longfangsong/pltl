@@ -1,6 +1,9 @@
+use super::{
+    format::{AcceptanceSignature, AtomicProposition, StateConjunction},
+    AbstractLabelExpression, Id,
+};
 use std::ops::{Deref, DerefMut};
 
-use super::{format::{AcceptanceSignature, AtomicProposition, StateConjunction}, AbstractLabelExpression, Id};
 /// Newtype wrapper around a [`crate::LabelExpression`], implements [`Deref`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Label(pub AbstractLabelExpression);
@@ -88,7 +91,12 @@ pub struct State {
 
 impl State {
     /// Constructs a new state from its parts.
-    pub fn from_parts(id: Id, label: Option<String>, accept_signature: AcceptanceSignature, edges: Vec<Edge>) -> Self {
+    pub fn from_parts(
+        id: Id,
+        label: Option<String>,
+        accept_signature: AcceptanceSignature,
+        edges: Vec<Edge>,
+    ) -> Self {
         Self {
             id,
             accept_signature,
@@ -147,7 +155,12 @@ impl TryFrom<(RawState, Vec<ExplicitEdge>)> for State {
             out_edges.push(Edge::from((state_acc.clone(), raw_edge)));
         }
 
-        Ok(State::from_parts(id, state_text, AcceptanceSignature(Vec::new()), out_edges))
+        Ok(State::from_parts(
+            id,
+            state_text,
+            AcceptanceSignature(Vec::new()),
+            out_edges,
+        ))
     }
 }
 

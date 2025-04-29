@@ -2,13 +2,13 @@ pub mod body;
 pub mod format;
 pub mod header;
 pub mod output;
-use std::fmt::Display;
 
 use body::Body;
 pub use body::State;
 use format::{AcceptanceCondition, AcceptanceInfo, AcceptanceName, AliasName, StateConjunction};
 use header::{Header, HeaderItem};
 use itertools::Itertools;
+use std::fmt::Display;
 
 type Id = u32;
 
@@ -128,7 +128,7 @@ impl HoaAutomaton {
         })
     }
 
-    /// Returns the number of edges in the automaton.
+    /// Returns the start states of the automaton.
     pub fn start(&self) -> Vec<&StateConjunction> {
         debug_assert!(
             self.header()
@@ -226,7 +226,6 @@ impl Default for HoaAutomaton {
     }
 }
 
-
 impl std::fmt::Display for AbstractLabelExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -270,8 +269,12 @@ impl AbstractLabelExpression {
             AbstractLabelExpression::Boolean(b) => b.to_string(),
             AbstractLabelExpression::Integer(i) => vars[*i as usize].clone(),
             AbstractLabelExpression::Negated(e) => format!("!{}", e.format_with_vars(vars)),
-            AbstractLabelExpression::Conjunction(cs) => cs.iter().map(|c| c.format_with_vars(vars)).join(" & "),
-            AbstractLabelExpression::Disjunction(ds) => ds.iter().map(|c| c.format_with_vars(vars)).join(" | "),
+            AbstractLabelExpression::Conjunction(cs) => {
+                cs.iter().map(|c| c.format_with_vars(vars)).join(" & ")
+            }
+            AbstractLabelExpression::Disjunction(ds) => {
+                ds.iter().map(|c| c.format_with_vars(vars)).join(" | ")
+            }
         }
     }
 }

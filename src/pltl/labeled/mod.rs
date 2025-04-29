@@ -1,11 +1,20 @@
-use crate::pltl;
+use crate::{pltl, utils::BitSet};
+// use std::{
+//     fmt,
+//     ops::{BitAnd, BitOr},
+//     ptr,
+// };
+
+// use crate::utils::{BitSet, BitSet32};
+
 use std::{
     fmt,
     ops::{BitAnd, BitOr},
-    ptr,
 };
 
-use crate::utils::{BitSet, BitSet32};
+use itertools::Itertools;
+
+use crate::utils::BitSet32;
 
 use super::{BinaryOp, UnaryOp, PLTL};
 
@@ -19,20 +28,42 @@ pub enum LabeledPLTL {
     Top,
     Bottom,
     Atom(u32),
-    Unary(UnaryOp, Box<LabeledPLTL>),
-    Binary(BinaryOp, Box<LabeledPLTL>, Box<LabeledPLTL>),
-    PastSubformula(u32, BitSet32),
+    Not(u32),
+    Yesterday {
+        id: u32,
+        weak: bool,
+        content: Box<LabeledPLTL>,
+    },
+    Next(Box<LabeledPLTL>),
+    Logical(BinaryOp, Vec<LabeledPLTL>),
+    Until {
+        // U(0) or W(1)
+        weak: bool,
+        lhs: Box<LabeledPLTL>,
+        rhs: Box<LabeledPLTL>,
+    },
+    Release {
+        // M(0) or R(1)
+        weak: bool,
+        lhs: Box<LabeledPLTL>,
+        rhs: Box<LabeledPLTL>,
+    },
+    BinaryTemporal {
+        id: u32,
+        op: BinaryOp,
+        weak: bool,
+        lhs: Box<LabeledPLTL>,
+        rhs: Box<LabeledPLTL>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Context<'a> {
-    pub past_subformulas: Vec<&'a PLTL>,
-    pub past_subformula_contains: Vec<BitSet32>,
-    pub expand_once: Vec<LabeledPLTL>,
-    pub initial_weaken_state: BitSet32,
+pub struct Context {
+    pub past_subformulas: Vec<LabeledPLTL>,
+    pub psf_containing_relation: Vec<BitSet32>,
 }
 
-impl fmt::Display for Context<'_> {
+impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let max_psf_id_width = self
             .past_subformulas
@@ -47,30 +78,30 @@ impl fmt::Display for Context<'_> {
             .max()
             .unwrap_or(0)
             .max("psf_expanded".len());
-        let max_expand_once_width = self
-            .expand_once
+        let max_psf_containing_relation_width = self
+            .psf_containing_relation
             .iter()
-            .map(|e| e.to_string().len())
+            .map(|x| x.to_string().len() + 2)
             .max()
             .unwrap_or(0)
-            .max("expand_once".len());
+            .max("psf_containing_relation".len());
 
         write!(f, "{:>width$}\t", "id", width = max_psf_id_width)?;
         write!(f, "{:>width$}\t", "psf_expanded", width = max_psf_width)?;
         writeln!(
             f,
-            "{:>width$}",
-            "expand_once",
-            width = max_expand_once_width
+            "{:>width$}\t",
+            "psf_containing_relation",
+            width = max_psf_containing_relation_width
         )?;
         for (i, psf) in self.past_subformulas.iter().enumerate() {
             write!(f, "{:>width$}\t", i, width = max_psf_id_width)?;
             write!(f, "{:>width$}\t", psf.to_string(), width = max_psf_width)?;
             writeln!(
                 f,
-                "{:>width$}",
-                self.expand_once[i].to_string(),
-                width = max_expand_once_width
+                "0b{:>width$b}\t",
+                self.psf_containing_relation[i],
+                width = max_psf_containing_relation_width - 2
             )?;
         }
         Ok(())
@@ -83,24 +114,37 @@ impl fmt::Display for LabeledPLTL {
             LabeledPLTL::Top => write!(f, "⊤"),
             LabeledPLTL::Bottom => write!(f, "⊥"),
             LabeledPLTL::Atom(label) => write!(f, "\"{}\"", label),
-            LabeledPLTL::Unary(op, box content) => write!(f, "({} {})", op, content),
-            LabeledPLTL::Binary(op, box left, box right) => {
-                write!(f, "({} {} {})", left, op, right)
+            LabeledPLTL::Not(label) => write!(f, "(¬\"{}\")", label),
+            LabeledPLTL::Yesterday { weak, content, .. } => {
+                write!(f, "({}Y {content})", if *weak { "~" } else { "" })
             }
-            LabeledPLTL::PastSubformula(index, is_weak) => {
-                write!(f, "<{}, 0b{:b}>", index, is_weak)
+            LabeledPLTL::Next(labeled_pltl) => write!(f, "(X {labeled_pltl})"),
+            LabeledPLTL::Logical(binary_op, content) => {
+                write!(
+                    f,
+                    "({})",
+                    content
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(format!(" {} ", binary_op).as_str())
+                )
             }
+            LabeledPLTL::Until { weak, lhs, rhs } => {
+                write!(f, "({lhs} {} {rhs})", if *weak { "W" } else { "U" })
+            }
+            LabeledPLTL::Release { weak, lhs, rhs } => {
+                write!(f, "({lhs} {} {rhs})", if *weak { "M" } else { "R" })
+            }
+            LabeledPLTL::BinaryTemporal {
+                op, weak, lhs, rhs, ..
+            } => write!(
+                f,
+                "({lhs} {}{} {rhs})",
+                if *weak { "~" } else { "" },
+                op.strengthen()
+            ),
         }
-    }
-}
-
-impl LabeledPLTL {
-    pub fn new_unary(op: UnaryOp, r: Self) -> Self {
-        Self::Unary(op, Box::new(r))
-    }
-
-    pub fn new_binary(op: BinaryOp, l: Self, r: Self) -> Self {
-        Self::Binary(op, Box::new(l), Box::new(r))
     }
 }
 
@@ -108,7 +152,24 @@ impl BitAnd for LabeledPLTL {
     type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        Self::new_binary(BinaryOp::And, self, rhs)
+        match (self, rhs) {
+            (
+                LabeledPLTL::Logical(BinaryOp::And, mut lhs_content),
+                LabeledPLTL::Logical(BinaryOp::And, rhs_content),
+            ) => {
+                lhs_content.extend(rhs_content);
+                LabeledPLTL::Logical(BinaryOp::And, lhs_content)
+            }
+            (LabeledPLTL::Logical(BinaryOp::And, mut content), rhs) => {
+                content.push(rhs);
+                LabeledPLTL::Logical(BinaryOp::And, content)
+            }
+            (lhs, LabeledPLTL::Logical(BinaryOp::And, mut rhs_content)) => {
+                rhs_content.push(lhs);
+                LabeledPLTL::Logical(BinaryOp::And, rhs_content)
+            }
+            (lhs, rhs) => LabeledPLTL::Logical(BinaryOp::And, vec![lhs, rhs]),
+        }
     }
 }
 
@@ -116,199 +177,255 @@ impl BitOr for LabeledPLTL {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        Self::new_binary(BinaryOp::Or, self, rhs)
+        match (self, rhs) {
+            (
+                LabeledPLTL::Logical(BinaryOp::Or, mut lhs_content),
+                LabeledPLTL::Logical(BinaryOp::Or, rhs_content),
+            ) => {
+                lhs_content.extend(rhs_content);
+                LabeledPLTL::Logical(BinaryOp::Or, lhs_content)
+            }
+            (LabeledPLTL::Logical(BinaryOp::Or, mut content), rhs) => {
+                content.push(rhs);
+                LabeledPLTL::Logical(BinaryOp::Or, content)
+            }
+            (lhs, LabeledPLTL::Logical(BinaryOp::Or, mut rhs_content)) => {
+                rhs_content.push(lhs);
+                LabeledPLTL::Logical(BinaryOp::Or, rhs_content)
+            }
+            (lhs, rhs) => LabeledPLTL::Logical(BinaryOp::Or, vec![lhs, rhs]),
+        }
     }
 }
 
 impl LabeledPLTL {
-    fn from_pltl_impl<'a>(
-        pltl: &'a PLTL,
-        context: &mut Context<'a>,
-    ) -> (LabeledPLTL, BitSet32, BitSet32) {
+    fn from_pltl_impl(pltl: &PLTL, context: &mut Context) -> (LabeledPLTL, BitSet32) {
         match pltl {
-            PLTL::Top => (LabeledPLTL::Top, BitSet32::default(), BitSet32::default()),
-            PLTL::Bottom => (
-                LabeledPLTL::Bottom,
-                BitSet32::default(),
-                BitSet32::default(),
-            ),
-            PLTL::Atom(label) => (
-                LabeledPLTL::Atom(*label),
-                BitSet32::default(),
-                BitSet32::default(),
-            ),
-            PLTL::Unary(op @ (UnaryOp::Yesterday | UnaryOp::WeakYesterday), box content) => {
-                let (inner_result, inner_psfs, inner_is_weak) =
+            PLTL::Top => (LabeledPLTL::Top, BitSet32::default()),
+            PLTL::Bottom => (LabeledPLTL::Bottom, BitSet32::default()),
+            PLTL::Atom(label) => (LabeledPLTL::Atom(*label), BitSet32::default()),
+            PLTL::Unary(UnaryOp::Not, box PLTL::Atom(atom)) => {
+                (LabeledPLTL::Not(*atom), BitSet32::default())
+            }
+            PLTL::Unary(UnaryOp::Not, _) => {
+                unreachable!("Normalize should have been called before converting to LabeledPLTL");
+            }
+            PLTL::Unary(UnaryOp::Next, box content) => {
+                let (inner_result, inner_psf_containing_relation) =
                     Self::from_pltl_impl(content, context);
-                let op_id = context
+                (
+                    LabeledPLTL::Next(Box::new(inner_result)),
+                    inner_psf_containing_relation,
+                )
+            }
+            PLTL::Unary(op @ (UnaryOp::Yesterday | UnaryOp::WeakYesterday), box content) => {
+                let is_weak = matches!(op, UnaryOp::WeakYesterday);
+                let (inner_result, inner_psf_containing_relation) =
+                    Self::from_pltl_impl(content, context);
+                let (id, result) = context
                     .past_subformulas
                     .iter()
-                    .position(|&x| x == pltl)
-                    .unwrap_or(context.past_subformulas.len()) as u32;
-                let is_weak =
-                    inner_is_weak | ((matches!(op, UnaryOp::WeakYesterday) as u32) << op_id);
-                let result = LabeledPLTL::PastSubformula(op_id, is_weak);
-                let psfs = inner_psfs | (1 << op_id);
-                context
-                    .initial_weaken_state
-                    .set(op_id, matches!(op, UnaryOp::WeakYesterday));
-                context.past_subformulas.push(pltl);
-                context.past_subformula_contains.push(psfs);
-                context
-                    .expand_once
-                    .push(LabeledPLTL::new_unary(*op, inner_result));
-                (result, psfs, is_weak)
+                    .find_position(|&x| {
+                        if let LabeledPLTL::Yesterday { content, weak, .. } = x
+                            && *weak == is_weak
+                        {
+                            &inner_result == content.as_ref()
+                        } else {
+                            false
+                        }
+                    })
+                    .map(|(id, content)| (id as u32, content.clone()))
+                    .unwrap_or_else(|| {
+                        let id = context.past_subformulas.len() as u32;
+                        let result = LabeledPLTL::Yesterday {
+                            content: Box::new(inner_result),
+                            weak: is_weak,
+                            id,
+                        };
+                        context.past_subformulas.push(result.clone());
+                        context
+                            .psf_containing_relation
+                            .push(inner_psf_containing_relation | (1 << id));
+                        (id, result)
+                    });
+                let containing_relation = inner_psf_containing_relation | (1 << id);
+                (result, containing_relation)
             }
-            PLTL::Unary(op, subformula) => {
-                let (inner_result, inner_psfs, inner_is_weak) =
-                    Self::from_pltl_impl(subformula, context);
+            PLTL::Unary(_, _) => {
+                unreachable!("Normalize should have been called before converting to LabeledPLTL");
+            }
+            PLTL::Binary(op @ (BinaryOp::And | BinaryOp::Or), box lhs, box rhs) => {
+                let (lhs_result, lhs_psf_containing_relation) = Self::from_pltl_impl(lhs, context);
+                let (rhs_result, rhs_psf_containing_relation) = Self::from_pltl_impl(rhs, context);
                 (
-                    LabeledPLTL::new_unary(*op, inner_result),
-                    inner_psfs,
-                    inner_is_weak,
+                    LabeledPLTL::Logical(*op, vec![lhs_result, rhs_result]),
+                    lhs_psf_containing_relation & rhs_psf_containing_relation,
+                )
+            }
+            PLTL::Binary(op @ (BinaryOp::Until | BinaryOp::WeakUntil), box lhs, box rhs) => {
+                let is_weak = matches!(op, BinaryOp::WeakUntil);
+                let (lhs_result, lhs_psf_containing_relation) = Self::from_pltl_impl(lhs, context);
+                let (rhs_result, rhs_psf_containing_relation) = Self::from_pltl_impl(rhs, context);
+                let result = LabeledPLTL::Until {
+                    weak: is_weak,
+                    lhs: Box::new(lhs_result),
+                    rhs: Box::new(rhs_result),
+                };
+                (
+                    result,
+                    lhs_psf_containing_relation | rhs_psf_containing_relation,
+                )
+            }
+            PLTL::Binary(op @ (BinaryOp::Release | BinaryOp::MightyRelease), box lhs, box rhs) => {
+                let is_weak = matches!(op, BinaryOp::Release);
+                let (lhs_result, lhs_psf_containing_relation) = Self::from_pltl_impl(lhs, context);
+                let (rhs_result, rhs_psf_containing_relation) = Self::from_pltl_impl(rhs, context);
+                let result = LabeledPLTL::Release {
+                    weak: is_weak,
+                    lhs: Box::new(lhs_result),
+                    rhs: Box::new(rhs_result),
+                };
+                (
+                    result,
+                    lhs_psf_containing_relation | rhs_psf_containing_relation,
                 )
             }
             PLTL::Binary(
-                op @ (BinaryOp::BackTo
-                | BinaryOp::WeakBackTo
-                | BinaryOp::Since
-                | BinaryOp::WeakSince),
+                op @ (BinaryOp::Since
+                | BinaryOp::WeakSince
+                | BinaryOp::BackTo
+                | BinaryOp::WeakBackTo),
                 box lhs,
                 box rhs,
             ) => {
-                let (lhs_result, lhs_psfs, lhs_is_weak) = Self::from_pltl_impl(lhs, context);
-                let (rhs_result, rhs_psfs, rhs_is_weak) = Self::from_pltl_impl(rhs, context);
-                let op_id = context
+                let is_weak = matches!(op, BinaryOp::WeakSince | BinaryOp::WeakBackTo);
+                let (lhs_result, lhs_psf_containing_relation) = Self::from_pltl_impl(lhs, context);
+                let (rhs_result, rhs_psf_containing_relation) = Self::from_pltl_impl(rhs, context);
+                let (id, result) = context
                     .past_subformulas
                     .iter()
-                    .position(|&x| x == pltl)
-                    .unwrap_or(context.past_subformulas.len()) as u32;
-                let is_weak = lhs_is_weak
-                    | rhs_is_weak
-                    | ((matches!(op, BinaryOp::WeakBackTo | BinaryOp::WeakSince) as u32) << op_id);
-                let result = LabeledPLTL::PastSubformula(op_id, is_weak);
-                let psfs = lhs_psfs | rhs_psfs | (1 << op_id);
-                context.initial_weaken_state.set(
-                    op_id,
-                    matches!(op, BinaryOp::WeakBackTo | BinaryOp::WeakSince),
-                );
-                context.past_subformulas.push(pltl);
-                context.past_subformula_contains.push(psfs);
-                context
-                    .expand_once
-                    .push(LabeledPLTL::new_binary(*op, lhs_result, rhs_result));
-                (result, psfs, is_weak)
-            }
-            PLTL::Binary(op, left, right) => {
-                let (lhs_result, lhs_psfs, lhs_is_weak) = Self::from_pltl_impl(left, context);
-                let (rhs_result, rhs_psfs, rhs_is_weak) = Self::from_pltl_impl(right, context);
-                (
-                    LabeledPLTL::new_binary(*op, lhs_result, rhs_result),
-                    lhs_psfs | rhs_psfs,
-                    lhs_is_weak | rhs_is_weak,
-                )
+                    .find_position(|&x| {
+                        if let LabeledPLTL::BinaryTemporal {
+                            op: x_op,
+                            weak,
+                            lhs,
+                            rhs,
+                            ..
+                        } = x
+                            && op == x_op
+                            && *weak == is_weak
+                        {
+                            &lhs_result == lhs.as_ref() && &rhs_result == rhs.as_ref()
+                        } else {
+                            false
+                        }
+                    })
+                    .map(|(id, content)| (id as u32, content.clone()))
+                    .unwrap_or_else(|| {
+                        let id = context.past_subformulas.len() as u32;
+                        let result = LabeledPLTL::BinaryTemporal {
+                            id,
+                            op: op.strengthen(),
+                            weak: is_weak,
+                            lhs: Box::new(lhs_result),
+                            rhs: Box::new(rhs_result),
+                        };
+                        context.past_subformulas.push(result.clone());
+                        context.psf_containing_relation.push(
+                            lhs_psf_containing_relation | rhs_psf_containing_relation | (1 << id),
+                        );
+                        (id, result)
+                    });
+                let containing_relation =
+                    lhs_psf_containing_relation | rhs_psf_containing_relation | (1 << id);
+                (result, containing_relation)
             }
         }
     }
 
-    pub fn new(pltl: &PLTL) -> (Self, Context<'_>) {
+    pub fn new(pltl: &PLTL) -> (Self, Context) {
         let mut context = Context::default();
-        let (result, _, _) = Self::from_pltl_impl(pltl, &mut context);
+        let (result, _) = Self::from_pltl_impl(pltl, &mut context);
         (result, context)
     }
 
-    pub fn normalize(&mut self, ctx: &Context) {
-        if let LabeledPLTL::PastSubformula(psf_id, weaken_state) = self {
-            *weaken_state &= ctx.past_subformula_contains[*psf_id as usize];
-        }
-    }
-}
-
-impl LabeledPLTL {
-    pub fn format(&self, ctx: &Context, pltl_context: &pltl::Context) -> String {
+    pub fn format(&self, pltl_ctx: &pltl::Context) -> String {
         match self {
             LabeledPLTL::Top => "⊤".to_string(),
             LabeledPLTL::Bottom => "⊥".to_string(),
-            LabeledPLTL::Atom(label) => pltl_context.atoms[*label as usize].to_string(),
-            LabeledPLTL::Unary(op, box content) => {
-                format!("({} {})", op, content.format(ctx, pltl_context))
+            LabeledPLTL::Atom(label) => pltl_ctx.atoms[*label as usize].clone(),
+            LabeledPLTL::Not(label) => format!("¬{}", &pltl_ctx.atoms[*label as usize]),
+            LabeledPLTL::Yesterday { weak, content, .. } => {
+                format!(
+                    "{}Y ({})",
+                    if *weak { "~" } else { "" },
+                    content.format(pltl_ctx)
+                )
             }
-            LabeledPLTL::Binary(op, box left, box right) => format!(
-                "({} {} {})",
-                left.format(ctx, pltl_context),
-                op,
-                right.format(ctx, pltl_context)
-            ),
-            LabeledPLTL::PastSubformula(psf_id, weaken_state) => {
-                let is_weak = weaken_state.get(*psf_id);
-                match &ctx.expand_once[*psf_id as usize] {
-                    LabeledPLTL::Unary(UnaryOp::Yesterday | UnaryOp::WeakYesterday, content) => {
-                        format!("({} {})", if is_weak { "~Y" } else { "Y" }, content.format(ctx, pltl_context))
-                    }
-                    LabeledPLTL::Binary(BinaryOp::BackTo | BinaryOp::WeakBackTo, lhs, rhs) => {
-                        format!("({} {} {})", lhs.format(ctx, pltl_context), if is_weak { "~B" } else { "B" }, rhs.format(ctx, pltl_context))
-                    }
-                    LabeledPLTL::Binary(BinaryOp::Since | BinaryOp::WeakSince, lhs, rhs) => {
-                        format!("({} {} {})", lhs.format(ctx, pltl_context), if is_weak { "~S" } else { "S" }, rhs.format(ctx, pltl_context))
-                    }
-                    _ => unreachable!(),
-                }
+            LabeledPLTL::Next(labeled_pltl) => format!("X ({})", labeled_pltl.format(pltl_ctx)),
+            LabeledPLTL::Logical(binary_op, content) => content
+                .iter()
+                .map(|x| x.format(pltl_ctx))
+                .collect::<Vec<_>>()
+                .join(format!(" {} ", binary_op).as_str())
+                .to_string(),
+            LabeledPLTL::Until { weak, lhs, rhs } => {
+                format!(
+                    "({}) {} ({})",
+                    lhs.format(pltl_ctx),
+                    if *weak { "W" } else { "U" },
+                    rhs.format(pltl_ctx)
+                )
+            }
+            LabeledPLTL::Release { weak, lhs, rhs } => {
+                format!(
+                    "({}) {} ({})",
+                    lhs.format(pltl_ctx),
+                    if *weak { "M" } else { "R" },
+                    rhs.format(pltl_ctx)
+                )
+            }
+            LabeledPLTL::BinaryTemporal {
+                op, weak, lhs, rhs, ..
+            } => {
+                format!(
+                    "({}) {} ({})",
+                    lhs.format(pltl_ctx),
+                    op.with_weaken_state(*weak),
+                    rhs.format(pltl_ctx)
+                )
             }
         }
     }
 }
-
-impl<'a> Context<'a> {
-    // Please make sure that the pltl is in the context
-    pub fn to_labeled(&self, pltl: &'a PLTL) -> LabeledPLTL {
-        match pltl {
-            PLTL::Top => LabeledPLTL::Top,
-            PLTL::Bottom => LabeledPLTL::Bottom,
-            PLTL::Atom(label) => LabeledPLTL::Atom(*label),
-            PLTL::Unary(UnaryOp::Yesterday | UnaryOp::WeakYesterday, _) => {
-                let psf_id = self
-                    .past_subformulas
-                    .iter()
-                    .position(|&x| ptr::eq(x, pltl))
-                    .unwrap();
-                LabeledPLTL::PastSubformula(
-                    psf_id as u32,
-                    self.initial_weaken_state & self.past_subformula_contains[psf_id],
-                )
-            }
-            PLTL::Unary(op, subformula) => LabeledPLTL::new_unary(*op, self.to_labeled(subformula)),
-            PLTL::Binary(
-                BinaryOp::BackTo | BinaryOp::WeakBackTo | BinaryOp::Since | BinaryOp::WeakSince,
-                _,
-                _,
-            ) => {
-                let psf_id = self
-                    .past_subformulas
-                    .iter()
-                    .position(|&x| ptr::eq(x, pltl))
-                    .unwrap();
-                LabeledPLTL::PastSubformula(
-                    psf_id as u32,
-                    self.initial_weaken_state & self.past_subformula_contains[psf_id],
-                )
-            }
-            PLTL::Binary(op, left, right) => {
-                LabeledPLTL::new_binary(*op, self.to_labeled(left), self.to_labeled(right))
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_new() {
-        let (pltl, ctx) = PLTL::from_string("(a S b) & (c B (a ~S b)) | Y a").unwrap();
+        let (pltl, ctx) = PLTL::from_string("(a S b) & (c B (a ~S b)) | Y a | X (a S b)").unwrap();
         let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
         println!("{}", ctx);
         println!("{}", context);
         println!("{}", labeled_pltl);
+        assert_eq!(context.past_subformulas.len(), 4);
+        assert_eq!(
+            context
+                .past_subformulas
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                r#"("0" S "1")"#,
+                r#"("0" ~S "1")"#,
+                r#"("2" B ("0" ~S "1"))"#,
+                r#"(Y "0")"#
+            ]
+        );
+        assert_eq!(
+            labeled_pltl.to_string(),
+            "((((\"0\" S \"1\") ∧ (\"2\" B (\"0\" ~S \"1\"))) ∨ (Y \"0\")) ∨ (X (\"0\" S \"1\")))"
+        );
     }
 }

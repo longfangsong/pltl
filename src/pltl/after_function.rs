@@ -1,9 +1,8 @@
-use super::utils::{conjunction, disjunction};
 use super::{
+    utils::{conjunction, disjunction},
     BinaryOp, UnaryOp, PLTL,
 };
-use crate::utils::{BitSet, Set};
-use crate::utils::{powerset, BitSet32};
+use crate::utils::{powerset, BitSet, BitSet32, Set};
 
 fn local_post_update(f: &PLTL, letter: BitSet32, past_st: &Set<PLTL>) -> PLTL {
     let mut first_part = f.clone();
@@ -82,7 +81,20 @@ pub fn local_after(f: &PLTL, letter: BitSet32, past_st: &Set<PLTL>) -> PLTL {
 pub fn after_function(f: &PLTL, letter: BitSet32) -> PLTL {
     let psf_set: Set<PLTL> = f.past_subformulas().into_iter().cloned().collect();
     let powerset = powerset(psf_set);
-    let result = disjunction(powerset.iter().map(|set| 
-        local_after(f, letter, set))).simplify();
+    let result = disjunction(powerset.iter().map(|set| local_after(f, letter, set))).simplify();
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pltl::PLTL;
+
+    #[test]
+    fn test_after_function() {
+        let (pltl, _) = PLTL::from_string("G (p | Y q)").unwrap();
+        let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
+        let result = after_function(&pltl, 0b01);
+        println!("result: {}", result);
+    }
 }

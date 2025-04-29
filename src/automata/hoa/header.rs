@@ -1,7 +1,11 @@
+use super::{
+    format::{
+        AcceptanceCondition, AcceptanceInfo, AcceptanceName, AliasName, AtomicProposition,
+        Property, StateConjunction,
+    },
+    AbstractLabelExpression, Id,
+};
 use std::ops::{Deref, DerefMut};
-
-use super::{format::{AcceptanceCondition, AcceptanceInfo, AcceptanceName, AliasName, AtomicProposition, Property, StateConjunction}, AbstractLabelExpression, Id};
-
 
 /// Represents a header item in a HOA file, for more information on each
 /// element, see the [HOA format specification](https://adl.github.io/hoaf/).
@@ -125,8 +129,6 @@ impl Header {
             _ => None,
         })
     }
-    
-
 
     pub fn count_states(&self) -> Option<usize> {
         self.iter().find_map(|i| i.count_states())

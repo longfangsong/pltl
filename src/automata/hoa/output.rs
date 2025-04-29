@@ -1,10 +1,15 @@
-use std::fmt::Display;
-
-use itertools::Itertools;
-
+use super::{
+    body::{Edge, Label},
+    format::{
+        AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceSignature, AliasName,
+        HoaBool, StateConjunction,
+    },
+    header::HeaderItem,
+    HoaAutomaton, State,
+};
 use crate::automata::hoa::format::{AcceptanceName, Property};
-
-use super::{body::{Edge, Label}, format::{AcceptanceAtom, AcceptanceCondition, AcceptanceInfo, AcceptanceSignature, AliasName, HoaBool, StateConjunction}, header::HeaderItem, HoaAutomaton, State};
+use itertools::Itertools;
+use std::fmt::Display;
 
 pub fn to_hoa(aut: &HoaAutomaton) -> String {
     aut.header()

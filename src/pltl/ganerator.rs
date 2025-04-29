@@ -1,6 +1,5 @@
-use crate::pltl::PLTL; 
+use crate::pltl::{BinaryOp, UnaryOp, PLTL};
 use rand::{seq::IndexedRandom, Rng};
-use crate::pltl::{UnaryOp, BinaryOp};
 
 fn generate_formula_rec(remaining_ops: usize, atom_count: usize, rng: &mut impl Rng) -> PLTL {
     if remaining_ops == 0 {
@@ -16,18 +15,18 @@ fn generate_formula_rec(remaining_ops: usize, atom_count: usize, rng: &mut impl 
         }
     } else if rng.random_bool(0.4) || remaining_ops == 1 {
         let op = UnaryOp::all_variants().choose(rng).unwrap();
-        
+
         let sub_formula = generate_formula_rec(remaining_ops - 1, atom_count, rng);
         PLTL::new_unary(*op, sub_formula)
     } else {
         let op = BinaryOp::all_variants().choose(rng).unwrap();
-        
+
         let left_ops = rng.random_range(0..remaining_ops);
         let right_ops = remaining_ops - 1 - left_ops;
-        
+
         let left = generate_formula_rec(left_ops, atom_count, rng);
         let right = generate_formula_rec(right_ops, atom_count, rng);
-        
+
         PLTL::new_binary(*op, left, right)
     }
 }

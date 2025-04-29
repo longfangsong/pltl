@@ -5,9 +5,9 @@ mod forms;
 #[cfg(not(target_arch = "wasm32"))]
 mod ganerator;
 mod info;
+pub mod labeled;
 mod parse;
 mod rewrite;
-pub mod labeled;
 pub mod utils;
 
 use serde::{Deserialize, Serialize};
@@ -34,11 +34,30 @@ pub struct Context {
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let atoms_len = self.atoms.len().to_string().len().max("id".len());
-        let atom_max_width = self.atoms.iter().map(|atom| atom.len()).max().unwrap_or(0)
+        let atom_max_width = self
+            .atoms
+            .iter()
+            .map(|atom| atom.len())
+            .max()
+            .unwrap_or(0)
             .max("atom".len());
-        writeln!(f, "{:iwidth$}\t{:awidth$}", "id", "atom", iwidth = atoms_len, awidth = atom_max_width)?;
+        writeln!(
+            f,
+            "{:iwidth$}\t{:awidth$}",
+            "id",
+            "atom",
+            iwidth = atoms_len,
+            awidth = atom_max_width
+        )?;
         for (i, atom) in self.atoms.iter().enumerate() {
-            writeln!(f, "{:iwidth$}\t{:awidth$}", i, atom, iwidth = atoms_len, awidth = atom_max_width)?;
+            writeln!(
+                f,
+                "{:iwidth$}\t{:awidth$}",
+                i,
+                atom,
+                iwidth = atoms_len,
+                awidth = atom_max_width
+            )?;
         }
         Ok(())
     }
@@ -97,6 +116,14 @@ impl UnaryOp {
             UnaryOp::Historically,
             UnaryOp::WeakYesterday,
         ]
+    }
+
+    pub fn set_weaken_state(&self, weaken_state: bool) -> Self {
+        match (self, weaken_state) {
+            (UnaryOp::Yesterday, true) => UnaryOp::WeakYesterday,
+            (UnaryOp::WeakYesterday, false) => UnaryOp::Yesterday,
+            _ => *self,
+        }
     }
 }
 
@@ -174,6 +201,16 @@ impl BinaryOp {
             BinaryOp::WeakBackTo,
         ]
     }
+
+    pub fn with_weaken_state(&self, weaken_state: bool) -> Self {
+        match (self, weaken_state) {
+            (BinaryOp::WeakSince, true) => BinaryOp::Since,
+            (BinaryOp::Since, false) => BinaryOp::WeakSince,
+            (BinaryOp::WeakBackTo, true) => BinaryOp::BackTo,
+            (BinaryOp::BackTo, false) => BinaryOp::WeakBackTo,
+            _ => *self,
+        }
+    }
 }
 
 impl fmt::Display for BinaryOp {
@@ -187,8 +224,7 @@ impl fmt::Display for BinaryOp {
 }
 
 /// Represents a Linear Temporal Logic with Past (PLTL) formula.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord, Default)]
 pub enum PLTL {
     Top,
     #[default]
@@ -197,7 +233,6 @@ pub enum PLTL {
     Unary(UnaryOp, Box<PLTL>),
     Binary(BinaryOp, Box<PLTL>, Box<PLTL>),
 }
-
 
 impl BitAnd for PLTL {
     type Output = Self;

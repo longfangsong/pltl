@@ -1,9 +1,15 @@
 use clap::{ArgGroup, Parser};
-use pltl::automata::{AllSubAutomatas, Context};
-use pltl::pltl::PLTL;
-use std::fs::{File};
-use std::io::{self, Read, Write};
-use std::path::Path;
+use pltl::{
+    automata::{AllSubAutomatas, Context},
+    pltl::PLTL,
+};
+// use pltl::automata::{AllSubAutomatas, Context};
+// use pltl::pltl::PLTL;
+use std::{
+    fs::File,
+    io::{self, Read, Write},
+    path::Path,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -54,12 +60,15 @@ fn main() -> io::Result<()> {
     };
 
     let (pltl_formula, atom_map) = PLTL::from_string(&input).unwrap();
-    let pltl_formula = pltl_formula.to_no_fgoh().to_negation_normal_form().simplify();
-    let ctx = Context::new(&pltl_formula, atom_map);
-    
-    let automatas = AllSubAutomatas::new(&ctx);
+    let pltl_formula = pltl_formula
+        .to_no_fgoh()
+        .to_negation_normal_form()
+        .simplify();
+    let ctx = Context::new(&pltl_formula);
+
+    let automatas = AllSubAutomatas::new(&ctx, &atom_map);
     let files = automatas.to_files();
-    
+
     for (name, content) in files {
         let path = Path::new(&args.fileout.clone().unwrap_or_default()).join(name);
         let mut file = File::create(path)?;

@@ -1,10 +1,14 @@
 use bimap::BiHashMap;
 use fxhash::FxBuildHasher;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::collections::{HashMap, HashSet};
-use std::ops::RangeInclusive;
+use std::{
+    collections::{HashMap, HashSet},
+    ops::RangeInclusive,
+};
 
 use crate::automata::hoa::AbstractLabelExpression;
+
+// use crate::automata::hoa::AbstractLabelExpression;
 
 pub type Map<K, V> = HashMap<K, V, FxBuildHasher>;
 
@@ -185,7 +189,9 @@ impl BitSet for BitSet32 {
     }
 }
 
-pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(origin: impl IntoIterator<Item = T>) -> Vec<Set<T>> {
+pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(
+    origin: impl IntoIterator<Item = T>,
+) -> Vec<Set<T>> {
     let mut result = vec![Set::default()];
     for elem in origin {
         let mut new_subsets = Vec::new();
@@ -199,7 +205,10 @@ pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(origin: impl IntoIter
     result
 }
 
-pub fn character_to_label_expression(letter: BitSet32, atom_count: usize) -> Vec<AbstractLabelExpression> {
+pub fn character_to_label_expression(
+    letter: BitSet32,
+    atom_count: usize,
+) -> Vec<AbstractLabelExpression> {
     letter
         .bits(atom_count as u32)
         .enumerate()
