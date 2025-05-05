@@ -205,6 +205,22 @@ pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(
     result
 }
 
+pub fn powerset_vec<T: Clone + std::cmp::Ord>(origin: impl IntoIterator<Item = T>) -> Vec<Vec<T>> {
+    let mut result = vec![Vec::new()];
+    for elem in origin {
+        let mut new_subsets = Vec::new();
+        for subset in &result {
+            let mut new_subset = subset.clone();
+            new_subset.push(elem.clone());
+            new_subsets.push(new_subset);
+        }
+        result.extend(new_subsets);
+    }
+    result.sort();
+    result.dedup();
+    result
+}
+
 pub fn character_to_label_expression(
     letter: BitSet32,
     atom_count: usize,

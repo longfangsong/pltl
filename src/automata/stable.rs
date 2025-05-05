@@ -4,7 +4,7 @@ use crate::{
     pltl::{
         self,
         labeled::{after_function::after_function, LabeledPLTL},
-        BinaryOp,
+        BinaryOp, PLTL,
     },
     utils::BitSet32,
 };
@@ -19,29 +19,28 @@ pub fn transition(
     bed_next_state: &[LabeledPLTL],
     letter: BitSet32,
 ) -> (LabeledPLTL, LabeledPLTL) {
-    let after_function_first_part = after_function(&state.0, letter);
+    let after_function_first_part = after_function(&state.0, letter).simplify();
     let second_part = if matches!(state.1, LabeledPLTL::Bottom) {
-        let mut result = Vec::with_capacity(1 << ctx.label_context.past_subformulas.len());
-        for bed_state in bed_next_state {
-            let first_part_in_second = after_function_first_part.clone();
-            let first_part_in_second = first_part_in_second.v_rewrite(&ctx.m_sets[m_set as usize]);
-            let second_part_in_second = bed_state.clone();
-            let second_part_in_second =
-                second_part_in_second.v_rewrite(&ctx.m_sets[m_set as usize]);
-
-            let item = first_part_in_second & second_part_in_second;
-            result.push(item);
-        }
+        let result: Vec<_> = bed_next_state
+            .into_par_iter()
+            .map(|bed_state| {
+                let first_part_in_second = after_function_first_part.clone();
+                let first_part_in_second = ctx.cached_v_rewrite(&first_part_in_second, m_set);
+                let second_part_in_second = bed_state.clone();
+                let second_part_in_second = ctx.cached_v_rewrite(&second_part_in_second, m_set);
+                first_part_in_second & second_part_in_second
+            })
+            .collect();
         LabeledPLTL::Logical(BinaryOp::Or, result)
     } else {
         after_function(&state.1, letter)
     };
-    (after_function_first_part.simplify(), second_part.simplify())
+    (after_function_first_part, second_part.simplify())
 }
 
 pub fn initial_state(ctx: &Context, m_set: BitSet32) -> (LabeledPLTL, LabeledPLTL) {
     let second_part = ctx.initial.clone();
-    let second_part = second_part.v_rewrite(&ctx.m_sets[m_set as usize]);
+    let second_part = ctx.cached_v_rewrite(&second_part, m_set);
     (ctx.initial.clone(), second_part.simplify())
 }
 
@@ -141,6 +140,30 @@ pub fn dump(
     result
 }
 
+pub fn to_bench() {
+    let (ltl, ltl_ctx) = PLTL::from_string(
+        "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) -> (r U t)) ) ))",
+    )
+    .unwrap();
+    let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
+    // println!("ltl: {ltl}");
+    let ctx = Context::new(&ltl);
+    // println!("ctx: {ctx}");
+    let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
+    let dump = dump(&ctx, &ltl_ctx, 0, &weakening_condition_automata);
+    for (state, transitions) in &dump.transitions {
+        // println!("{}", format_state(state, &ltl_ctx));
+        for (character, transition_to) in transitions.iter().enumerate() {
+            // println!(
+            //     "  0b{:b} -> {}",
+            //     character,
+            //     format_state(transition_to, &ltl_ctx)
+            // );
+        }
+    }
+    println!("done");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,15 +171,19 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string("F (Y p)").unwrap();
+        // G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) ))
+        let (ltl, ltl_ctx) = PLTL::from_string(
+            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) -> (r U t)) ) ))",
+        )
+        .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-        println!("ltl: {ltl}");
+        // println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
-        println!("ctx: {ctx}");
+        // println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
         let dump = dump(&ctx, &ltl_ctx, 0, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {
-            println!("{}", format_state(state, &ltl_ctx));
+            // println!("{}", format_state(state, &ltl_ctx));
             for (character, transition_to) in transitions.iter().enumerate() {
                 println!(
                     "  0b{:b} -> {}",

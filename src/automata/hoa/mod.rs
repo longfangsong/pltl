@@ -97,13 +97,14 @@ impl HoaAutomaton {
             states.push(state.id());
         }
         if let Some(num_states) = self.num_states()
-            && states.len() != num_states {
-                errors.push(format!(
-                    "The number of states is set to {} but there are {} states!",
-                    num_states,
-                    states.len()
-                ));
-            }
+            && states.len() != num_states
+        {
+            errors.push(format!(
+                "The number of states is set to {} but there are {} states!",
+                num_states,
+                states.len()
+            ));
+        }
         if errors.is_empty() {
             Ok(())
         } else {

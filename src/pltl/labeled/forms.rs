@@ -4,128 +4,6 @@ use crate::pltl::BinaryOp;
 
 use super::LabeledPLTL;
 
-// impl LabeledPLTL {
-//     pub fn to_no_fgoh(self) -> Self {
-//         match self {
-//             LabeledPLTL::Top => LabeledPLTL::Top,
-//             LabeledPLTL::Bottom => LabeledPLTL::Bottom,
-//             LabeledPLTL::Atom(_) => self,
-//             LabeledPLTL::Unary(UnaryOp::Eventually, content) => {
-//                 LabeledPLTL::new_binary(BinaryOp::Until, LabeledPLTL::Top, content.to_no_fgoh())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Globally, box content) => LabeledPLTL::new_binary(
-//                 BinaryOp::WeakUntil,
-//                 content.to_no_fgoh(),
-//                 LabeledPLTL::Bottom,
-//             ),
-//             LabeledPLTL::Unary(UnaryOp::Once, content) => {
-//                 LabeledPLTL::new_binary(BinaryOp::Since, LabeledPLTL::Top, content.to_no_fgoh())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Historically, box content) => LabeledPLTL::new_unary(
-//                 UnaryOp::Not,
-//                 LabeledPLTL::new_unary(
-//                     UnaryOp::Once,
-//                     LabeledPLTL::new_unary(UnaryOp::Not, content.clone()),
-//                 )
-//                 .to_no_fgoh(),
-//             ),
-//             LabeledPLTL::Unary(op, content) => LabeledPLTL::new_unary(op, content.to_no_fgoh()),
-//             LabeledPLTL::Binary(op, l, r) => {
-//                 LabeledPLTL::new_binary(op, l.to_no_fgoh(), r.to_no_fgoh())
-//             }
-//             LabeledPLTL::PastSubformula(_, _) => self,
-//         }
-//     }
-
-//     fn push_negation(self) -> Self {
-//         match self {
-//             LabeledPLTL::Top => LabeledPLTL::Bottom,
-//             LabeledPLTL::Bottom => LabeledPLTL::Top,
-//             LabeledPLTL::Atom(_) => LabeledPLTL::new_unary(UnaryOp::Not, self),
-//             LabeledPLTL::Unary(UnaryOp::Not, box content) => content,
-//             LabeledPLTL::Unary(UnaryOp::Eventually, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::Globally, content.push_negation())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Globally, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::Eventually, content.push_negation())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Once, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::Historically, content.push_negation())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Historically, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::Once, content.push_negation())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Yesterday, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::WeakYesterday, content.push_negation())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::WeakYesterday, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::Yesterday, content.push_negation())
-//             }
-//             LabeledPLTL::Unary(UnaryOp::Next, content) => {
-//                 LabeledPLTL::new_unary(UnaryOp::Next, content.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::And, lhs, rhs) => {
-//                 LabeledPLTL::new_binary(BinaryOp::Or, lhs.push_negation(), rhs.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::Or, lhs, rhs) => {
-//                 LabeledPLTL::new_binary(BinaryOp::And, lhs.push_negation(), rhs.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::Until, lhs, rhs) => {
-//                 LabeledPLTL::new_binary(BinaryOp::Release, lhs.push_negation(), rhs.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::Release, lhs, rhs) => {
-//                 LabeledPLTL::new_binary(BinaryOp::Until, lhs.push_negation(), rhs.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::WeakUntil, lhs, rhs) => LabeledPLTL::new_binary(
-//                 BinaryOp::MightyRelease,
-//                 lhs.push_negation(),
-//                 rhs.push_negation(),
-//             ),
-//             LabeledPLTL::Binary(BinaryOp::MightyRelease, lhs, rhs) => LabeledPLTL::new_binary(
-//                 BinaryOp::WeakUntil,
-//                 lhs.push_negation(),
-//                 rhs.push_negation(),
-//             ),
-//             LabeledPLTL::Binary(BinaryOp::Since, lhs, rhs) => LabeledPLTL::new_binary(
-//                 BinaryOp::WeakBackTo,
-//                 lhs.push_negation(),
-//                 rhs.push_negation(),
-//             ),
-//             LabeledPLTL::Binary(BinaryOp::WeakBackTo, lhs, rhs) => {
-//                 LabeledPLTL::new_binary(BinaryOp::Since, lhs.push_negation(), rhs.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::WeakSince, lhs, rhs) => {
-//                 LabeledPLTL::new_binary(BinaryOp::BackTo, lhs.push_negation(), rhs.push_negation())
-//             }
-//             LabeledPLTL::Binary(BinaryOp::BackTo, lhs, rhs) => LabeledPLTL::new_binary(
-//                 BinaryOp::WeakSince,
-//                 lhs.push_negation(),
-//                 rhs.push_negation(),
-//             ),
-//             LabeledPLTL::PastSubformula(_, _) => unreachable!(),
-//         }
-//     }
-
-//     pub fn to_negation_normal_form(self) -> Self {
-//         match self {
-//             LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) => self,
-//             LabeledPLTL::Unary(UnaryOp::Not, box LabeledPLTL::Atom(_)) => self,
-//             LabeledPLTL::Unary(UnaryOp::Not, content) => {
-//                 content.push_negation().to_negation_normal_form()
-//             }
-//             LabeledPLTL::Unary(op, content) => {
-//                 LabeledPLTL::new_unary(op, content.to_negation_normal_form())
-//             }
-//             LabeledPLTL::Binary(op, l, r) => LabeledPLTL::new_binary(
-//                 op,
-//                 l.to_negation_normal_form(),
-//                 r.to_negation_normal_form(),
-//             ),
-//             LabeledPLTL::PastSubformula(_, _) => unreachable!(),
-//         }
-//     }
-// }
-
 impl LabeledPLTL {
     fn simplify_release_once(
         weak: bool,
@@ -593,13 +471,13 @@ impl LabeledPLTL {
                         result.push(simplified);
                     }
                 }
+                result.sort();
+                result.dedup();
                 if result.is_empty() {
                     (LabeledPLTL::Top, false)
                 } else if result.len() == 1 {
                     return (result.pop().unwrap(), false);
                 } else {
-                    result.sort();
-                    result.dedup();
                     (LabeledPLTL::Logical(BinaryOp::And, result), false)
                 }
             }
@@ -617,13 +495,13 @@ impl LabeledPLTL {
                         result.push(simplified);
                     }
                 }
+                result.sort();
+                result.dedup();
                 if result.is_empty() {
                     (LabeledPLTL::Bottom, false)
                 } else if result.len() == 1 {
                     return (result.pop().unwrap(), false);
                 } else {
-                    result.sort();
-                    result.dedup();
                     (LabeledPLTL::Logical(BinaryOp::Or, result), false)
                 }
             }
@@ -646,5 +524,22 @@ impl LabeledPLTL {
         panic!("Simplification failed: {result}");
         #[cfg(not(debug_assertions))]
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pltl::PLTL;
+
+    use super::*;
+
+    #[test]
+    fn test_simplify() {
+        // let pltl = parse("⊥ ∨ (X q) ∨ (⊤ ∧ ⊥) ∨ ⊤ ∨ (⊥ ∧ ⊤)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("⊥ ∨ (X q) ∨ (⊤ ∧ ⊥) ∨ ⊤ ∨ (⊥ ∧ ⊤)").unwrap();
+        // let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
+        let (ltl, ctx) = LabeledPLTL::new(&ltl);
+        let ltl = ltl.simplify();
+        println!("simplified: {ltl}");
     }
 }

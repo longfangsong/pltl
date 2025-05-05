@@ -24,14 +24,14 @@ pub fn transition(
             let c = c as BitSet32;
             let first_part = ctx.u_items[u_item_id as usize].clone();
             let first_part = first_part.c_rewrite(c);
-            let first_part = first_part.u_rewrite(&ctx.n_sets[n_set as usize]);
+            let first_part = ctx.cached_u_rewrite(&first_part, n_set);
             let first_part = LabeledPLTL::Until {
                 weak: false,
                 lhs: Box::new(LabeledPLTL::Top),
                 rhs: Box::new(first_part),
             };
             let second_part = bed_state.clone();
-            let second_part = second_part.u_rewrite(&ctx.n_sets[n_set as usize]);
+            let second_part = ctx.cached_u_rewrite(&second_part, n_set);
             result.push(first_part & second_part);
         }
         LabeledPLTL::Logical(BinaryOp::Or, result).simplify()
@@ -42,7 +42,7 @@ pub fn transition(
 
 pub fn initial_state(ctx: &Context, u_item_id: u32, n_set: BitSet32) -> LabeledPLTL {
     let u_item = ctx.u_items[u_item_id as usize].clone();
-    let u_item = u_item.u_rewrite(&ctx.n_sets[n_set as usize]);
+    let u_item = ctx.cached_u_rewrite(&u_item, n_set);
     LabeledPLTL::Until {
         weak: false,
         lhs: Box::new(LabeledPLTL::Top),
@@ -182,7 +182,10 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string("F (Y p)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(
+            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) <-> (r U t)) ) ))",
+        )
+        .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);

@@ -1,4 +1,4 @@
-use crate::utils::{BitSet, BitSet32, Set};
+use crate::utils::{BitSet, BitSet32};
 
 use super::LabeledPLTL;
 
@@ -49,7 +49,7 @@ impl LabeledPLTL {
         }
     }
 
-    pub fn v_rewrite(self, m: &Set<LabeledPLTL>) -> Self {
+    pub fn v_rewrite(self, m: &[LabeledPLTL]) -> Self {
         let contains = matches!(
             self,
             LabeledPLTL::Until { .. } | LabeledPLTL::Release { .. }
@@ -120,7 +120,7 @@ impl LabeledPLTL {
         }
     }
 
-    pub fn u_rewrite(self, n: &Set<LabeledPLTL>) -> Self {
+    pub fn u_rewrite(self, n: &[LabeledPLTL]) -> Self {
         let contains = matches!(
             self,
             LabeledPLTL::Until { .. } | LabeledPLTL::Release { .. }
@@ -189,96 +189,5 @@ impl LabeledPLTL {
                 rhs: Box::new(rhs.u_rewrite(n)),
             },
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_rewrite() {
-        // let (pltl, pltl_ctx) = PLTL::from_string("a U (b S (c U d))").unwrap();
-        // let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
-        // let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
-        // let mut m = Set::default();
-        // m.insert(labeled_pltl.clone());
-        // let inner = if let LabeledPLTL::Binary(_, _, rhs) = &labeled_pltl {
-        //     if let LabeledPLTL::LabeledPastSubformula { id, weaken_state, content } = rhs.as_ref() {
-        //         if let LabeledPLTL::Binary(_, _, rhs) = content.as_ref() {
-        //             rhs.deref().clone()
-        //         } else {
-        //             unreachable!()
-        //         }
-        //     } else {
-        //         unreachable!()
-        //     }
-        // } else {
-        //     unreachable!()
-        // };
-        // m.insert(inner);
-
-        // let mut labeled_pltl = labeled_pltl;
-        // labeled_pltl.v_rewrite(&m);
-        // assert_eq!(labeled_pltl.format(&context, &pltl_ctx), "(a W <0, 0b0, (b S (c W d))>)");
-
-        // labeled_pltl.c_rewrite(0b1);
-        // assert_eq!(labeled_pltl.format(&context, &pltl_ctx), "(a W <0, 0b1, (b S (c W d))>)");
-
-        // let (pltl, pltl_ctx) = PLTL::from_string("a U (b S (c U (Y d)))").unwrap();
-        // let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
-        // let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
-        // println!("{}", labeled_pltl);
-        // println!("{}", context);
-
-        // let mut m = Set::default();
-        // m.insert(labeled_pltl.clone());
-
-        // let mut labeled_pltl = labeled_pltl;
-        // labeled_pltl.c_rewrite(0b01);
-        // labeled_pltl.push_down_weaken_state();
-        // labeled_pltl.normalize(&context);
-        // println!("{}", labeled_pltl);
-        // println!("{}", labeled_pltl.format(&context, &pltl_ctx));
-        // println!(
-        //     "{}",
-        //     if let LabeledPLTL::Binary(_, _, rhs) = &labeled_pltl {
-        //         if let LabeledPLTL::LabeledPastSubformula { content, .. } = rhs.as_ref() {
-        //             if let LabeledPLTL::Binary(_, _, rhs) = content.as_ref() {
-        //                 rhs
-        //             } else {
-        //                 unreachable!()
-        //             }
-        //         } else {
-        //             unreachable!()
-        //         }
-        //     } else {
-        //         unreachable!()
-        //     }
-        // );
-        // let inner = if let LabeledPLTL::Binary(_, _, rhs) = &labeled_pltl {
-        //     if let LabeledPLTL::LabeledPastSubformula {
-        //         id,
-        //         weaken_state,
-        //         content,
-        //     } = rhs.as_ref()
-        //     {
-        //         if let LabeledPLTL::Binary(_, _, rhs) = content.as_ref() {
-        //             if let LabeledPLTL::Binary(_, _, rhs) = rhs.as_ref() {
-        //                 rhs.deref().clone()
-        //             } else {
-        //                 unreachable!()
-        //             }
-        //         } else {
-        //             unreachable!()
-        //         }
-        //     } else {
-        //         unreachable!()
-        //     }
-        // } else {
-        //     unreachable!()
-        // };
-        // println!("{}", inner);
-        // println!("{}", inner.format(&context, &pltl_ctx));
-        // // m.insert(inner);
     }
 }

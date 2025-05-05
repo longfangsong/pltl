@@ -47,10 +47,7 @@ impl fmt::Display for Context {
             awidth = atom_max_width
         )?;
         for (i, atom) in self.atoms.iter().enumerate() {
-            writeln!(
-                f,
-                "{i:atoms_len$}\t{atom:atom_max_width$}"
-            )?;
+            writeln!(f, "{i:atoms_len$}\t{atom:atom_max_width$}")?;
         }
         Ok(())
     }

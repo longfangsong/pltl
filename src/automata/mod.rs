@@ -4,7 +4,7 @@ use crate::{
         labeled::{self, LabeledPLTL},
         PLTL,
     },
-    utils::{character_to_label_expression, powerset, BitSet, Map, Set},
+    utils::{character_to_label_expression, powerset_vec, BitSet, Map},
 };
 use hoa::{
     body::{Edge, Label},
@@ -20,15 +20,19 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::{fmt, hash::Hash};
+use std::{
+    fmt,
+    hash::Hash,
+    sync::RwLock,
+};
 
 mod guarantee;
 pub mod hoa;
 mod safety;
-mod stable;
+pub mod stable;
 mod weakening_conditions;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Context {
     pub initial: LabeledPLTL,
     // pub pltl_context: pltl::Context,
@@ -37,8 +41,11 @@ pub struct Context {
     pub saturated_c_sets: Vec<Vec<u32>>,
     pub u_items: Vec<LabeledPLTL>,
     pub v_items: Vec<LabeledPLTL>,
-    pub n_sets: Vec<Set<LabeledPLTL>>,
-    pub m_sets: Vec<Set<LabeledPLTL>>,
+    pub n_sets: Vec<Vec<LabeledPLTL>>,
+    pub m_sets: Vec<Vec<LabeledPLTL>>,
+
+    pub v_rewrite_cache: RwLock<Map<(LabeledPLTL, u32), LabeledPLTL>>,
+    pub u_rewrite_cache: RwLock<Map<(LabeledPLTL, u32), LabeledPLTL>>,
 }
 
 impl Context {
@@ -83,15 +90,13 @@ impl Context {
     pub fn new(ltl: &PLTL) -> Self {
         let (labeled_pltl, psf_context) = LabeledPLTL::new(ltl);
         let saturated_c_sets = Self::compute_saturated_c_set(&psf_context);
-        // let mut m_n_sets = (Vec::new(), Vec::new());
-        // collect_u_v_items(&psf_context, ltl, &mut m_n_sets);
         let (u_items, v_items) = labeled_pltl.u_v_subformulas();
         let mut u_items: Vec<_> = u_items.into_iter().collect();
         u_items.sort();
         let mut v_items: Vec<_> = v_items.into_iter().collect();
         v_items.sort();
-        let m_sets = powerset(u_items.iter().cloned());
-        let n_sets = powerset(v_items.iter().cloned());
+        let m_sets = powerset_vec(u_items.iter().cloned());
+        let n_sets = powerset_vec(v_items.iter().cloned());
         Self {
             initial: labeled_pltl,
             label_context: psf_context,
@@ -100,7 +105,50 @@ impl Context {
             v_items,
             n_sets,
             m_sets,
+            v_rewrite_cache: RwLock::new(Map::default()),
+            u_rewrite_cache: RwLock::new(Map::default()),
         }
+    }
+
+    pub fn cached_v_rewrite(&self, v_item: &LabeledPLTL, m_set: u32) -> LabeledPLTL {
+        if matches!(
+            v_item,
+            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_)
+        ) {
+            return v_item.clone();
+        }
+        let cache_read = self.v_rewrite_cache.read().unwrap();
+        if let Some(result) = cache_read.get(&(v_item.clone(), m_set)) {
+            return result.clone();
+        }
+        drop(cache_read);
+        let v_item = v_item.clone();
+        let result = v_item.clone().v_rewrite(&self.m_sets[m_set as usize]);
+        let mut cache_write = self.v_rewrite_cache.write().unwrap();
+        cache_write.insert((v_item, m_set), result.clone());
+        result
+    }
+
+    pub fn cached_u_rewrite(&self, u_item: &LabeledPLTL, n_set: u32) -> LabeledPLTL {
+        if matches!(
+            u_item,
+            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_)
+        ) {
+            return u_item.clone();
+        }
+        let cache_read = self.u_rewrite_cache.read().unwrap();
+        if let Some(result) = cache_read.get(&(u_item.clone(), n_set)) {
+            return result.clone();
+        }
+        drop(cache_read);
+        let u_item = u_item.clone();
+        let result = u_item
+            .clone()
+            .u_rewrite(&self.n_sets[n_set as usize])
+            .simplify();
+        let mut cache_write = self.u_rewrite_cache.write().unwrap();
+        cache_write.insert((u_item, n_set), result.clone());
+        result
     }
 }
 
@@ -403,16 +451,13 @@ impl AllSubAutomatas {
                 makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
             }
         }
-        makefile_content += &format!(
-            "\n\tautfilt --gra --generic --complete -D -o {file_name} "
-        );
+        makefile_content += &format!("\n\tautfilt --gra --generic --complete -D -o {file_name} ");
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
                 if m_id == 0 && n_id == 0 {
                     makefile_content += &format!("-F rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
                 } else {
-                    makefile_content +=
-                        &format!("--product-or=rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                    makefile_content += &format!("--product-or=rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
                 }
             }
         }

@@ -533,7 +533,6 @@ impl From<BinaryOp> for PLTLParseTree {
 
 #[cfg(test)]
 mod tests {
-    
 
     use super::*;
 

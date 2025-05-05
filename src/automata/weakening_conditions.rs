@@ -113,11 +113,10 @@ mod tests {
 
     #[test]
     fn test_dump() {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(1)
-            .build_global()
-            .unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string("G (F (p ->  X (X q) | (r & (p B (_))) ))").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(
+            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) <-> (r U t)) ) ))",
+        )
+        .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let ctx = Context::new(&ltl);
         let dump = dump(&ctx, &ltl_ctx);

@@ -555,26 +555,22 @@ impl PLTL {
 
 #[cfg(test)]
 mod tests {
-    use crate::pltl::ganerator::generate_formula;
-
-    // #[test]
-    // fn test_simplify() {
-    //     let (pltl, ctx) = PLTL::from_string("p & ¬p").unwrap();
-    //     println!("{}", pltl);
-    //     let simplified = pltl.to_no_fgoh();
-    //     println!("{}", simplified);
-    //     let simplified = simplified.simplify();
-    //     println!("{}", simplified);
-    // }
+    use crate::pltl::PLTL;
+    #[test]
+    fn test_to_no_fgoh() {
+        let (ltl, ltl_ctx) = PLTL::from_string("(r U t) -> (p S q)").unwrap();
+        let no_fgoh = ltl.to_no_fgoh();
+        println!("{no_fgoh}");
+    }
 
     #[test]
-    fn test_simplify() {
-        for _ in 0..1000 {
-            let pltl = generate_formula(5, 2);
-            println!("{pltl}");
-            let simplified = pltl.to_no_fgoh().simplify();
-            println!("{simplified}");
-            println!("----");
-        }
+    fn test_to_negation_normal_form() {
+        let (ltl, ltl_ctx) = PLTL::from_string("(r U t) -> (p S q)").unwrap();
+        let no_fgoh = ltl.to_no_fgoh();
+        println!("{no_fgoh}");
+        let negation_normal_form = no_fgoh.to_negation_normal_form();
+        println!("{negation_normal_form}");
+        let simplified = negation_normal_form.simplify();
+        println!("{simplified}");
     }
 }
