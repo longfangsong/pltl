@@ -643,7 +643,7 @@ impl LabeledPLTL {
             result = new_result;
         }
         #[cfg(debug_assertions)]
-        panic!("Simplification failed: {}", result);
+        panic!("Simplification failed: {result}");
         #[cfg(not(debug_assertions))]
         result
     }

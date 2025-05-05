@@ -84,7 +84,7 @@ pub fn dump<'ctx, 'state: 'ctx>(
     let init_state = initial_state(ctx, u_item_id, v_set);
     let init_state = (init_state, weakening_condition_automata.init_state.clone());
     let mut result = HoaAutomatonBuilder::new(
-        format!("guarantee_{}_0b{:b}", u_item_id, v_set),
+        format!("guarantee_{u_item_id}_0b{v_set:b}"),
         AcceptanceName::Buchi,
         init_state.clone(),
         is_accepting_state,
@@ -184,9 +184,9 @@ mod tests {
     fn test_dump_hoa() {
         let (ltl, ltl_ctx) = PLTL::from_string("F (Y p)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-        println!("ltl: {}", ltl);
+        println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
-        println!("ctx: {}", ctx);
+        println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
         let dump = dump(&ctx, &ltl_ctx, 0, 0, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {

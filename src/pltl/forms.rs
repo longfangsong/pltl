@@ -547,7 +547,7 @@ impl PLTL {
             result = new_result;
         }
         #[cfg(debug_assertions)]
-        panic!("Simplification failed: {}", result);
+        panic!("Simplification failed: {result}");
         #[cfg(not(debug_assertions))]
         result
     }
@@ -571,9 +571,9 @@ mod tests {
     fn test_simplify() {
         for _ in 0..1000 {
             let pltl = generate_formula(5, 2);
-            println!("{}", pltl);
+            println!("{pltl}");
             let simplified = pltl.to_no_fgoh().simplify();
-            println!("{}", simplified);
+            println!("{simplified}");
             println!("----");
         }
     }

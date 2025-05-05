@@ -245,14 +245,14 @@ mod tests {
     #[test]
     fn test_sub_power_set() {
         let set = 0b10;
-        println!("set: 0b{:b}", set);
+        println!("set: 0b{set:b}");
         // let expected = [
         //     BitSet32::full_with_size(0),
         //     BitSet32::full_with_size(1),
         // ];
         let sub_power_set = set.sub_power_set();
         for set in sub_power_set {
-            println!("set: 0b{:b}", set);
+            println!("set: 0b{set:b}");
         }
         // assert_eq!(sub_power_set.len(), expected.len());
         // for set in sub_power_set {

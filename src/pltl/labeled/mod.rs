@@ -95,7 +95,7 @@ impl fmt::Display for Context {
             width = max_psf_containing_relation_width
         )?;
         for (i, psf) in self.past_subformulas.iter().enumerate() {
-            write!(f, "{:>width$}\t", i, width = max_psf_id_width)?;
+            write!(f, "{i:>max_psf_id_width$}\t")?;
             write!(f, "{:>width$}\t", psf.to_string(), width = max_psf_width)?;
             writeln!(
                 f,
@@ -113,8 +113,8 @@ impl fmt::Display for LabeledPLTL {
         match self {
             LabeledPLTL::Top => write!(f, "⊤"),
             LabeledPLTL::Bottom => write!(f, "⊥"),
-            LabeledPLTL::Atom(label) => write!(f, "\"{}\"", label),
-            LabeledPLTL::Not(label) => write!(f, "(¬\"{}\")", label),
+            LabeledPLTL::Atom(label) => write!(f, "\"{label}\""),
+            LabeledPLTL::Not(label) => write!(f, "(¬\"{label}\")"),
             LabeledPLTL::Yesterday { weak, content, .. } => {
                 write!(f, "({}Y {content})", if *weak { "~" } else { "" })
             }
@@ -127,7 +127,7 @@ impl fmt::Display for LabeledPLTL {
                         .iter()
                         .map(|x| x.to_string())
                         .collect::<Vec<_>>()
-                        .join(format!(" {} ", binary_op).as_str())
+                        .join(format!(" {binary_op} ").as_str())
                 )
             }
             LabeledPLTL::Until { weak, lhs, rhs } => {
@@ -367,7 +367,7 @@ impl LabeledPLTL {
                 .iter()
                 .map(|x| x.format(pltl_ctx))
                 .collect::<Vec<_>>()
-                .join(format!(" {} ", binary_op).as_str())
+                .join(format!(" {binary_op} ").as_str())
                 .to_string(),
             LabeledPLTL::Until { weak, lhs, rhs } => {
                 format!(
@@ -406,9 +406,9 @@ mod tests {
     fn test_new() {
         let (pltl, ctx) = PLTL::from_string("(a S b) & (c B (a ~S b)) | Y a | X (a S b)").unwrap();
         let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
-        println!("{}", ctx);
-        println!("{}", context);
-        println!("{}", labeled_pltl);
+        println!("{ctx}");
+        println!("{context}");
+        println!("{labeled_pltl}");
         assert_eq!(context.past_subformulas.len(), 4);
         assert_eq!(
             context

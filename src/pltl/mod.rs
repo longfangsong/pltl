@@ -10,6 +10,7 @@ mod parse;
 mod rewrite;
 pub mod utils;
 
+use parse::PLTLParseTree;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -17,10 +18,6 @@ use std::{
     str::FromStr,
 };
 use wasm_bindgen::prelude::*;
-
-// pub use annotated::Annotated;
-use parse::PLTLParseTree;
-// pub use past_subformula::{PastSubformulaSet, PastSubformularSetContext};
 
 /// Represents a context accompanied with PLTL formulas.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -52,11 +49,7 @@ impl fmt::Display for Context {
         for (i, atom) in self.atoms.iter().enumerate() {
             writeln!(
                 f,
-                "{:iwidth$}\t{:awidth$}",
-                i,
-                atom,
-                iwidth = atoms_len,
-                awidth = atom_max_width
+                "{i:atoms_len$}\t{atom:atom_max_width$}"
             )?;
         }
         Ok(())
@@ -286,7 +279,10 @@ impl PLTL {
 
     #[cfg(test)]
     pub fn from_string_increment(s: &str, ctx: &mut Context) -> Self {
-        Self::from_parse_tree(parse::parse(s).unwrap().1, &mut ctx.atoms)
+        use parse::ParserInput;
+
+        let input = ParserInput::new(s);
+        Self::from_parse_tree(parse::parse(input).unwrap().1, &mut ctx.atoms)
     }
 }
 
@@ -310,32 +306,32 @@ impl fmt::Display for PLTL {
         match self {
             PLTL::Top => write!(f, "⊤"),
             PLTL::Bottom => write!(f, "⊥"),
-            PLTL::Atom(s) => write!(f, "\"{}\"", s),
+            PLTL::Atom(s) => write!(f, "\"{s}\""),
             PLTL::Unary(UnaryOp::Not, box content @ PLTL::Unary(UnaryOp::Not, _)) => {
                 write!(f, "{}{}", UnaryOp::Not, content)
             }
             PLTL::Unary(op, box content @ PLTL::Binary(_, _, _)) => {
-                write!(f, "{}({})", op, content)
+                write!(f, "{op}({content})")
             }
-            PLTL::Unary(op, box content) => write!(f, "{}{}", op, content),
+            PLTL::Unary(op, box content) => write!(f, "{op}{content}"),
             PLTL::Binary(op, box lhs, box rhs) => {
                 let lhs = match (op, lhs) {
-                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => format!("{}", lhs),
-                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => format!("{}", lhs),
+                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => format!("{lhs}"),
+                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => format!("{lhs}"),
                     (_, PLTL::Binary(_, _, _)) => {
-                        format!("({})", lhs)
+                        format!("({lhs})")
                     }
-                    _ => format!("{}", lhs),
+                    _ => format!("{lhs}"),
                 };
                 let rhs = match (op, rhs) {
-                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => format!("{}", rhs),
-                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => format!("{}", rhs),
+                    (BinaryOp::And, PLTL::Binary(BinaryOp::And, _, _)) => format!("{rhs}"),
+                    (BinaryOp::Or, PLTL::Binary(BinaryOp::Or, _, _)) => format!("{rhs}"),
                     (_, PLTL::Binary(_, _, _)) => {
-                        format!("({})", rhs)
+                        format!("({rhs})")
                     }
-                    _ => format!("{}", rhs),
+                    _ => format!("{rhs}"),
                 };
-                write!(f, "{} {} {}", lhs, op, rhs)
+                write!(f, "{lhs} {op} {rhs}")
             }
         }
     }
@@ -420,7 +416,7 @@ impl PLTL {
                     }
                     _ => rhs.format_with_atom_names(atom_map).to_string(),
                 };
-                format!("{} {} {}", lhs, op, rhs)
+                format!("{lhs} {op} {rhs}")
             }
         }
     }

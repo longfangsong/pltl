@@ -29,7 +29,7 @@ pub fn to_dot(aut: &HoaAutomaton) -> String {
     ));
     if let Some(acceptance_name) = aut.header().acceptance_name() {
         if acceptance_name == AcceptanceName::Buchi || acceptance_name == AcceptanceName::CoBuchi {
-            dot.push_str(&format!("    label=\"[{}]\";\n", acceptance_name));
+            dot.push_str(&format!("    label=\"[{acceptance_name}]\";\n"));
         } else {
             dot.push_str(&format!(
                 "    label=\"{}\\n[{}]\";\n",
@@ -50,7 +50,7 @@ pub fn to_dot(aut: &HoaAutomaton) -> String {
     dot.push_str("    I [label=\"\", style=invis, width=0];\n");
     if let Some(start) = aut.header().start() {
         for state in start.0 {
-            dot.push_str(&format!("    I -> {}\n", state));
+            dot.push_str(&format!("    I -> {state}\n"));
         }
     }
     let aps = aut.aps();
@@ -58,14 +58,14 @@ pub fn to_dot(aut: &HoaAutomaton) -> String {
         dot.push_str(&format!("    {}", state.id));
         if let Some(label) = &state.label {
             if state.accept_signature.is_empty() {
-                dot.push_str(&format!(" [label=\"{}\"]", label));
+                dot.push_str(&format!(" [label=\"{label}\"]"));
             } else if aut
                 .header()
                 .acceptance_name()
                 .map(|it| it == AcceptanceName::Buchi || it == AcceptanceName::CoBuchi)
                 .unwrap_or(false)
             {
-                dot.push_str(&format!(" [label=\"{}\", shape=doublecircle]", label));
+                dot.push_str(&format!(" [label=\"{label}\", shape=doublecircle]"));
             } else {
                 dot.push_str(&format!(
                     " [label=\"{}\\n{}\"]",
@@ -101,20 +101,20 @@ pub fn to_dot(aut: &HoaAutomaton) -> String {
 impl Display for HeaderItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HeaderItem::Version(version) => write!(f, "HOA: {}", version),
-            HeaderItem::States(number) => write!(f, "States: {}", number),
-            HeaderItem::Start(state_conj) => write!(f, "Start: {}", state_conj),
+            HeaderItem::Version(version) => write!(f, "HOA: {version}"),
+            HeaderItem::States(number) => write!(f, "States: {number}"),
+            HeaderItem::Start(state_conj) => write!(f, "Start: {state_conj}"),
             HeaderItem::AP(aps) => write!(
                 f,
                 "AP: {} {}",
                 aps.len(),
-                aps.iter().map(|ap| format!("\"{}\"", ap)).join(" ")
+                aps.iter().map(|ap| format!("\"{ap}\"")).join(" ")
             ),
             HeaderItem::Alias(alias_name, alias_expression) => {
-                write!(f, "Alias: {} {}", alias_name, alias_expression)
+                write!(f, "Alias: {alias_name} {alias_expression}")
             }
             HeaderItem::Acceptance(number_sets, condition) => {
-                write!(f, "Acceptance: {} {}", number_sets, condition)
+                write!(f, "Acceptance: {number_sets} {condition}")
             }
             HeaderItem::AcceptanceName(identifier, vec_info) => {
                 write!(f, "acc-name: {} {}", identifier, vec_info.iter().join(" "))
@@ -122,7 +122,7 @@ impl Display for HeaderItem {
             HeaderItem::Tool(name, options) => {
                 write!(f, "tool: {} {}", name, options.iter().join(" "))
             }
-            HeaderItem::Name(name) => write!(f, "name: \"{}\"", name),
+            HeaderItem::Name(name) => write!(f, "name: \"{name}\""),
             HeaderItem::Properties(properties) => {
                 write!(f, "properties: {}", properties.iter().join(" "))
             }
@@ -133,8 +133,8 @@ impl Display for HeaderItem {
 impl Display for AcceptanceInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AcceptanceInfo::Int(integer) => write!(f, "{}", integer),
-            AcceptanceInfo::Identifier(identifier) => write!(f, "{}", identifier),
+            AcceptanceInfo::Int(integer) => write!(f, "{integer}"),
+            AcceptanceInfo::Identifier(identifier) => write!(f, "{identifier}"),
         }
     }
 }
@@ -192,8 +192,8 @@ impl Display for AcceptanceName {
 impl Display for AcceptanceAtom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AcceptanceAtom::Positive(id) => write!(f, "{}", id),
-            AcceptanceAtom::Negative(id) => write!(f, "!{}", id),
+            AcceptanceAtom::Positive(id) => write!(f, "{id}"),
+            AcceptanceAtom::Negative(id) => write!(f, "!{id}"),
         }
     }
 }
@@ -207,11 +207,11 @@ impl Display for HoaBool {
 impl Display for AcceptanceCondition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AcceptanceCondition::Fin(id) => write!(f, "Fin({})", id),
-            AcceptanceCondition::Inf(id) => write!(f, "Inf({})", id),
-            AcceptanceCondition::And(left, right) => write!(f, "({} & {})", left, right),
-            AcceptanceCondition::Or(left, right) => write!(f, "({} | {})", left, right),
-            AcceptanceCondition::Boolean(val) => write!(f, "{}", val),
+            AcceptanceCondition::Fin(id) => write!(f, "Fin({id})"),
+            AcceptanceCondition::Inf(id) => write!(f, "Inf({id})"),
+            AcceptanceCondition::And(left, right) => write!(f, "({left} & {right})"),
+            AcceptanceCondition::Or(left, right) => write!(f, "({left} | {right})"),
+            AcceptanceCondition::Boolean(val) => write!(f, "{val}"),
         }
     }
 }
@@ -253,12 +253,12 @@ impl Display for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "State: {}", self.id)?;
         if let Some(label) = &self.label {
-            write!(f, " \"{}\"", label)?;
+            write!(f, " \"{label}\"")?;
         }
         writeln!(f, " {}", self.accept_signature)?;
 
         for edge in &self.edges {
-            writeln!(f, "{}", edge)?;
+            writeln!(f, "{edge}")?;
         }
         Ok(())
     }

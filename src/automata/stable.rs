@@ -82,7 +82,7 @@ pub fn dump(
         weakening_condition_automata.init_state.clone(),
     );
     let mut result = HoaAutomatonBuilder::new(
-        format!("stable_0b{:b}", m_set),
+        format!("stable_0b{m_set:b}"),
         AcceptanceName::CoBuchi,
         init_state.clone(),
         is_accepting_state,
@@ -150,9 +150,9 @@ mod tests {
     fn test_dump_hoa() {
         let (ltl, ltl_ctx) = PLTL::from_string("F (Y p)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-        println!("ltl: {}", ltl);
+        println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
-        println!("ctx: {}", ctx);
+        println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
         let dump = dump(&ctx, &ltl_ctx, 0, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {

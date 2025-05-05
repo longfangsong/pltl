@@ -96,15 +96,14 @@ impl HoaAutomaton {
             }
             states.push(state.id());
         }
-        if let Some(num_states) = self.num_states() {
-            if states.len() != num_states {
+        if let Some(num_states) = self.num_states()
+            && states.len() != num_states {
                 errors.push(format!(
                     "The number of states is set to {} but there are {} states!",
                     num_states,
                     states.len()
                 ));
             }
-        }
         if errors.is_empty() {
             Ok(())
         } else {
@@ -235,7 +234,7 @@ impl std::fmt::Display for AbstractLabelExpression {
             },
             AbstractLabelExpression::Integer(i) => write!(f, "{i}"),
             AbstractLabelExpression::Negated(expr) => {
-                write!(f, "!{}", expr)
+                write!(f, "!{expr}")
             }
             AbstractLabelExpression::Conjunction(conjuncts) => {
                 let mut it = conjuncts.iter();

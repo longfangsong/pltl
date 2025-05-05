@@ -228,7 +228,7 @@ impl TryFrom<String> for AcceptanceName {
             "parity" => Ok(AcceptanceName::Parity),
             "all" => Ok(AcceptanceName::All),
             "none" => Ok(AcceptanceName::None),
-            val => Err(format!("Unknown acceptance type: {}", val)),
+            val => Err(format!("Unknown acceptance type: {val}")),
         }
     }
 }
@@ -281,7 +281,7 @@ impl TryFrom<String> for Property {
             "terminatl" => Ok(Property::Terminal),
             "tight" => Ok(Property::Tight),
             "colored" => Ok(Property::Colored),
-            unknown => Err(format!("{} is not a valid property", unknown)),
+            unknown => Err(format!("{unknown} is not a valid property")),
         }
     }
 }

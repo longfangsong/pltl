@@ -117,7 +117,7 @@ mod tests {
             .num_threads(1)
             .build_global()
             .unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string("F (Y p)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("G (F (p ->  X (X q) | (r & (p B (_))) ))").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let ctx = Context::new(&ltl);
         let dump = dump(&ctx, &ltl_ctx);

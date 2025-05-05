@@ -95,6 +95,6 @@ mod tests {
         let (pltl, _) = PLTL::from_string("G (p | Y q)").unwrap();
         let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
         let result = after_function(&pltl, 0b01);
-        println!("result: {}", result);
+        println!("result: {result}");
     }
 }

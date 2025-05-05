@@ -119,10 +119,10 @@ impl fmt::Display for Context {
             )?;
         }
         for (i, u) in self.u_items.iter().enumerate() {
-            writeln!(f, "u{}: {}", i, u)?;
+            writeln!(f, "u{i}: {u}")?;
         }
         for (i, v) in self.v_items.iter().enumerate() {
-            writeln!(f, "v{}: {}", i, v)?;
+            writeln!(f, "v{i}: {v}")?;
         }
         for (i, n) in self.n_sets.iter().enumerate() {
             writeln!(
@@ -334,86 +334,85 @@ impl AllSubAutomatas {
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
                 if m_id != 0 {
-                    let file_name = format!("b2_0b{:b}_0b{:b}.hoa", m_id, n_id);
-                    makefile_content += &format!("{}: ", file_name);
+                    let file_name = format!("b2_0b{m_id:b}_0b{n_id:b}.hoa");
+                    makefile_content += &format!("{file_name}: ");
                     makefile_content += &m_id
                         .iter()
-                        .map(|u_item_id| format!("guarantee_{u_item_id}_0b{:b}.hoa ", n_id))
+                        .map(|u_item_id| format!("guarantee_{u_item_id}_0b{n_id:b}.hoa "))
                         .join(" ");
-                    makefile_content += &format!("\n\tautfilt --Buchi -o {} ", file_name);
+                    makefile_content += &format!("\n\tautfilt --Buchi -o {file_name} ");
                     makefile_content += &m_id
                         .iter()
                         .enumerate()
                         .map(|(id, u_item_id)| {
                             if id == 0 {
-                                format!("-F guarantee_{u_item_id}_0b{:b}.hoa ", n_id)
+                                format!("-F guarantee_{u_item_id}_0b{n_id:b}.hoa ")
                             } else {
-                                format!("--product=guarantee_{u_item_id}_0b{:b}.hoa ", n_id)
+                                format!("--product=guarantee_{u_item_id}_0b{n_id:b}.hoa ")
                             }
                         })
                         .join(" ");
                     makefile_content += "\n";
                 }
                 if n_id != 0 {
-                    let file_name = format!("c3_0b{:b}_0b{:b}.hoa", m_id, n_id);
-                    makefile_content += &format!("{}: ", file_name);
+                    let file_name = format!("c3_0b{m_id:b}_0b{n_id:b}.hoa");
+                    makefile_content += &format!("{file_name}: ");
                     makefile_content += &n_id
                         .iter()
-                        .map(|v_item_id| format!("safety_0b{:b}_{v_item_id}.hoa ", m_id))
+                        .map(|v_item_id| format!("safety_0b{m_id:b}_{v_item_id}.hoa "))
                         .join(" ");
-                    makefile_content += &format!("\n\tautfilt --coBuchi -o {} ", file_name);
+                    makefile_content += &format!("\n\tautfilt --coBuchi -o {file_name} ");
                     makefile_content += &n_id
                         .iter()
                         .enumerate()
                         .map(|(i, v_item_id)| {
                             if i == 0 {
-                                format!("-F safety_0b{:b}_{v_item_id}.hoa ", m_id)
+                                format!("-F safety_0b{m_id:b}_{v_item_id}.hoa ")
                             } else {
-                                format!("--product=safety_0b{:b}_{v_item_id}.hoa ", m_id)
+                                format!("--product=safety_0b{m_id:b}_{v_item_id}.hoa ")
                             }
                         })
                         .join(" ");
                     makefile_content += "\n";
                 }
 
-                let file_name = format!("rabin_0b{:b}_0b{:b}.hoa", m_id, n_id);
-                makefile_content += &format!("{}: ", file_name);
-                makefile_content += &format!("stable_0b{:b}.hoa ", m_id);
+                let file_name = format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa");
+                makefile_content += &format!("{file_name}: ");
+                makefile_content += &format!("stable_0b{m_id:b}.hoa ");
                 if m_id != 0 {
-                    makefile_content += &format!("b2_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                    makefile_content += &format!("b2_0b{m_id:b}_0b{n_id:b}.hoa ");
                 }
                 if n_id != 0 {
-                    makefile_content += &format!("c3_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                    makefile_content += &format!("c3_0b{m_id:b}_0b{n_id:b}.hoa ");
                 }
-                makefile_content += &format!("\n\tautfilt --gra -o {} ", file_name);
-                makefile_content += &format!("-F stable_0b{:b}.hoa ", m_id);
+                makefile_content += &format!("\n\tautfilt --gra -o {file_name} ");
+                makefile_content += &format!("-F stable_0b{m_id:b}.hoa ");
                 if m_id != 0 {
-                    makefile_content += &format!("--product=b2_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                    makefile_content += &format!("--product=b2_0b{m_id:b}_0b{n_id:b}.hoa ");
                 }
                 if n_id != 0 {
-                    makefile_content += &format!("--product=c3_0b{:b}_0b{:b}.hoa", m_id, n_id);
+                    makefile_content += &format!("--product=c3_0b{m_id:b}_0b{n_id:b}.hoa");
                 }
                 makefile_content += "\n";
             }
         }
         let file_name = "result.hoa".to_string();
-        makefile_content += &format!("{}: ", file_name);
+        makefile_content += &format!("{file_name}: ");
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
-                makefile_content += &format!("rabin_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
             }
         }
         makefile_content += &format!(
-            "\n\tautfilt --gra --generic --complete -D -o {} ",
-            file_name
+            "\n\tautfilt --gra --generic --complete -D -o {file_name} "
         );
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
                 if m_id == 0 && n_id == 0 {
-                    makefile_content += &format!("-F rabin_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                    makefile_content += &format!("-F rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
                 } else {
                     makefile_content +=
-                        &format!("--product-or=rabin_0b{:b}_0b{:b}.hoa ", m_id, n_id);
+                        &format!("--product-or=rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
                 }
             }
         }
@@ -425,18 +424,18 @@ impl AllSubAutomatas {
         let mut result = Vec::new();
         for (u_item_id, automatas_for_n_set) in self.guarantee_automatas.iter().enumerate() {
             for (n_set, automata) in automatas_for_n_set.iter().enumerate() {
-                let file_name = format!("guarantee_{u_item_id}_0b{:b}.hoa", n_set);
+                let file_name = format!("guarantee_{u_item_id}_0b{n_set:b}.hoa");
                 result.push((file_name, to_hoa(automata)));
             }
         }
         for (v_item_id, automatas_for_m_set) in self.safety_automatas.iter().enumerate() {
             for (m_set, automata) in automatas_for_m_set.iter().enumerate() {
-                let file_name = format!("safety_0b{:b}_{v_item_id}.hoa", m_set);
+                let file_name = format!("safety_0b{m_set:b}_{v_item_id}.hoa");
                 result.push((file_name, to_hoa(automata)));
             }
         }
         for (m_set, automata) in self.stable_automatas.iter().enumerate() {
-            let file_name = format!("stable_0b{:b}.hoa", m_set);
+            let file_name = format!("stable_0b{m_set:b}.hoa");
             result.push((file_name, to_hoa(automata)));
         }
         let makefile_content = self.makefile_content();
@@ -508,9 +507,9 @@ mod tests {
             .unwrap();
         let (ltl, ltl_ctx) = PLTL::from_string("G p | F (p S q) & (r B s)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-        println!("ltl: {}", ltl);
+        println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
-        println!("ctx: {}", ctx);
+        println!("ctx: {ctx}");
         let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
         println!("{:?}", automatas.to_dots(&ctx, &ltl_ctx));
     }
