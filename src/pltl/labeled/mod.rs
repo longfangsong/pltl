@@ -110,40 +110,66 @@ impl fmt::Display for Context {
 
 impl fmt::Display for LabeledPLTL {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fn add_parentheses(expr: &LabeledPLTL) -> String {
+            match expr {
+                LabeledPLTL::Top
+                | LabeledPLTL::Bottom
+                | LabeledPLTL::Atom(_)
+                | LabeledPLTL::Not(_)
+                | LabeledPLTL::Yesterday { .. }
+                | LabeledPLTL::Next(_) => expr.to_string(),
+                LabeledPLTL::Logical(_, _)
+                | LabeledPLTL::Until { .. }
+                | LabeledPLTL::Release { .. }
+                | LabeledPLTL::BinaryTemporal { .. } => format!("({expr})"),
+            }
+        }
         match self {
             LabeledPLTL::Top => write!(f, "⊤"),
             LabeledPLTL::Bottom => write!(f, "⊥"),
             LabeledPLTL::Atom(label) => write!(f, "\"{label}\""),
-            LabeledPLTL::Not(label) => write!(f, "(¬\"{label}\")"),
+            LabeledPLTL::Not(label) => write!(f, "¬\"{label}\""),
             LabeledPLTL::Yesterday { weak, content, .. } => {
-                write!(f, "({}Y {content})", if *weak { "~" } else { "" })
+                let content_str = add_parentheses(content);
+                write!(f, "{}Y{content_str}", if *weak { "~" } else { "" })
             }
-            LabeledPLTL::Next(labeled_pltl) => write!(f, "(X {labeled_pltl})"),
+            LabeledPLTL::Next(labeled_pltl) => {
+                let content_str = add_parentheses(labeled_pltl);
+                write!(f, "X{content_str}")
+            }
             LabeledPLTL::Logical(binary_op, content) => {
                 write!(
                     f,
-                    "({})",
+                    "{}",
                     content
                         .iter()
-                        .map(|x| x.to_string())
+                        .map(add_parentheses)
                         .collect::<Vec<_>>()
                         .join(format!(" {binary_op} ").as_str())
                 )
             }
             LabeledPLTL::Until { weak, lhs, rhs } => {
-                write!(f, "({lhs} {} {rhs})", if *weak { "W" } else { "U" })
+                let lhs_str = add_parentheses(lhs);
+                let rhs_str = add_parentheses(rhs);
+                write!(f, "{lhs_str} {} {rhs_str}", if *weak { "W" } else { "U" })
             }
             LabeledPLTL::Release { weak, lhs, rhs } => {
-                write!(f, "({lhs} {} {rhs})", if *weak { "M" } else { "R" })
+                let lhs_str = add_parentheses(lhs);
+                let rhs_str = add_parentheses(rhs);
+                write!(f, "{lhs_str} {} {rhs_str}", if *weak { "R" } else { "M" })
             }
             LabeledPLTL::BinaryTemporal {
                 op, weak, lhs, rhs, ..
-            } => write!(
-                f,
-                "({lhs} {}{} {rhs})",
-                if *weak { "~" } else { "" },
-                op.strengthen()
-            ),
+            } => {
+                let lhs_str = add_parentheses(lhs);
+                let rhs_str = add_parentheses(rhs);
+                write!(
+                    f,
+                    "{lhs_str} {}{} {rhs_str}",
+                    if *weak { "~" } else { "" },
+                    op.strengthen()
+                )
+            }
         }
     }
 }
@@ -349,6 +375,21 @@ impl LabeledPLTL {
         (result, context)
     }
 
+    pub fn format_with_parentheses(&self, pltl_ctx: &pltl::Context) -> String {
+        match self {
+            LabeledPLTL::Top
+            | LabeledPLTL::Bottom
+            | LabeledPLTL::Atom(_)
+            | LabeledPLTL::Not(_)
+            | LabeledPLTL::Yesterday { .. }
+            | LabeledPLTL::Next(_) => self.format(pltl_ctx),
+            LabeledPLTL::Logical(_, _)
+            | LabeledPLTL::Until { .. }
+            | LabeledPLTL::Release { .. }
+            | LabeledPLTL::BinaryTemporal { .. } => format!("({})", self.format(pltl_ctx)),
+        }
+    }
+
     pub fn format(&self, pltl_ctx: &pltl::Context) -> String {
         match self {
             LabeledPLTL::Top => "⊤".to_string(),
@@ -357,43 +398,36 @@ impl LabeledPLTL {
             LabeledPLTL::Not(label) => format!("¬{}", &pltl_ctx.atoms[*label as usize]),
             LabeledPLTL::Yesterday { weak, content, .. } => {
                 format!(
-                    "{}Y ({})",
+                    "{}Y {}",
                     if *weak { "~" } else { "" },
-                    content.format(pltl_ctx)
+                    content.format_with_parentheses(pltl_ctx)
                 )
             }
-            LabeledPLTL::Next(labeled_pltl) => format!("X ({})", labeled_pltl.format(pltl_ctx)),
+            LabeledPLTL::Next(labeled_pltl) => {
+                format!("X {}", labeled_pltl.format_with_parentheses(pltl_ctx))
+            }
             LabeledPLTL::Logical(binary_op, content) => content
                 .iter()
-                .map(|x| x.format(pltl_ctx))
+                .map(|x| x.format_with_parentheses(pltl_ctx))
                 .collect::<Vec<_>>()
                 .join(format!(" {binary_op} ").as_str())
                 .to_string(),
             LabeledPLTL::Until { weak, lhs, rhs } => {
-                format!(
-                    "({}) {} ({})",
-                    lhs.format(pltl_ctx),
-                    if *weak { "W" } else { "U" },
-                    rhs.format(pltl_ctx)
-                )
+                let lhs_str = lhs.format_with_parentheses(pltl_ctx);
+                let rhs_str = rhs.format_with_parentheses(pltl_ctx);
+                format!("{} {} {}", lhs_str, if *weak { "W" } else { "U" }, rhs_str)
             }
             LabeledPLTL::Release { weak, lhs, rhs } => {
-                format!(
-                    "({}) {} ({})",
-                    lhs.format(pltl_ctx),
-                    if *weak { "M" } else { "R" },
-                    rhs.format(pltl_ctx)
-                )
+                let lhs_str = lhs.format_with_parentheses(pltl_ctx);
+                let rhs_str = rhs.format_with_parentheses(pltl_ctx);
+                format!("{} {} {}", lhs_str, if *weak { "R" } else { "M" }, rhs_str)
             }
             LabeledPLTL::BinaryTemporal {
                 op, weak, lhs, rhs, ..
             } => {
-                format!(
-                    "({}) {} ({})",
-                    lhs.format(pltl_ctx),
-                    op.with_weaken_state(*weak),
-                    rhs.format(pltl_ctx)
-                )
+                let lhs_str = lhs.format_with_parentheses(pltl_ctx);
+                let rhs_str = rhs.format_with_parentheses(pltl_ctx);
+                format!("{} {} {}", lhs_str, op.with_weaken_state(*weak), rhs_str)
             }
         }
     }

@@ -70,17 +70,8 @@ impl LabeledPLTL {
                 op,
                 content.into_iter().map(|item| item.v_rewrite(m)).collect(),
             ),
-            LabeledPLTL::Until {
-                weak: false,
-                lhs,
-                rhs,
-            }
-            | LabeledPLTL::Release {
-                weak: false,
-                lhs,
-                rhs,
-            } => {
-                if contains {
+            LabeledPLTL::Until { weak, lhs, rhs } => {
+                if contains || weak {
                     LabeledPLTL::Until {
                         weak: true,
                         lhs: Box::new(lhs.v_rewrite(m)),
@@ -90,20 +81,17 @@ impl LabeledPLTL {
                     LabeledPLTL::Bottom
                 }
             }
-            LabeledPLTL::Until {
-                weak: true,
-                lhs,
-                rhs,
+            LabeledPLTL::Release { weak, lhs, rhs } => {
+                if contains || weak {
+                    LabeledPLTL::Release {
+                        weak: true,
+                        lhs: Box::new(lhs.v_rewrite(m)),
+                        rhs: Box::new(rhs.v_rewrite(m)),
+                    }
+                } else {
+                    LabeledPLTL::Bottom
+                }
             }
-            | LabeledPLTL::Release {
-                weak: true,
-                lhs,
-                rhs,
-            } => LabeledPLTL::Until {
-                weak: true,
-                lhs: Box::new(lhs.v_rewrite(m)),
-                rhs: Box::new(rhs.v_rewrite(m)),
-            },
             LabeledPLTL::BinaryTemporal {
                 lhs,
                 rhs,
@@ -141,16 +129,7 @@ impl LabeledPLTL {
                 op,
                 content.into_iter().map(|item| item.u_rewrite(n)).collect(),
             ),
-            LabeledPLTL::Until {
-                weak: true,
-                lhs,
-                rhs,
-            }
-            | LabeledPLTL::Release {
-                weak: true,
-                lhs,
-                rhs,
-            } => {
+            LabeledPLTL::Until { lhs, rhs, .. } => {
                 if contains {
                     LabeledPLTL::Top
                 } else {
@@ -161,20 +140,17 @@ impl LabeledPLTL {
                     }
                 }
             }
-            LabeledPLTL::Until {
-                weak: false,
-                lhs,
-                rhs,
+            LabeledPLTL::Release { lhs, rhs, .. } => {
+                if contains {
+                    LabeledPLTL::Top
+                } else {
+                    LabeledPLTL::Release {
+                        weak: false,
+                        lhs: Box::new(lhs.u_rewrite(n)),
+                        rhs: Box::new(rhs.u_rewrite(n)),
+                    }
+                }
             }
-            | LabeledPLTL::Release {
-                weak: false,
-                lhs,
-                rhs,
-            } => LabeledPLTL::Until {
-                weak: false,
-                lhs: Box::new(lhs.u_rewrite(n)),
-                rhs: Box::new(rhs.u_rewrite(n)),
-            },
             LabeledPLTL::BinaryTemporal {
                 id,
                 op,

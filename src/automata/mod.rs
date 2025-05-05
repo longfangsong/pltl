@@ -20,11 +20,7 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::{
-    fmt,
-    hash::Hash,
-    sync::RwLock,
-};
+use std::{fmt, hash::Hash, sync::RwLock};
 
 mod guarantee;
 pub mod hoa;

@@ -4,7 +4,7 @@ use crate::{
     pltl::{
         self,
         labeled::{after_function::after_function, LabeledPLTL},
-        BinaryOp, PLTL,
+        BinaryOp,
     },
     utils::BitSet32,
 };
@@ -140,30 +140,6 @@ pub fn dump(
     result
 }
 
-pub fn to_bench() {
-    let (ltl, ltl_ctx) = PLTL::from_string(
-        "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) -> (r U t)) ) ))",
-    )
-    .unwrap();
-    let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-    // println!("ltl: {ltl}");
-    let ctx = Context::new(&ltl);
-    // println!("ctx: {ctx}");
-    let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
-    let dump = dump(&ctx, &ltl_ctx, 0, &weakening_condition_automata);
-    for (state, transitions) in &dump.transitions {
-        // println!("{}", format_state(state, &ltl_ctx));
-        for (character, transition_to) in transitions.iter().enumerate() {
-            // println!(
-            //     "  0b{:b} -> {}",
-            //     character,
-            //     format_state(transition_to, &ltl_ctx)
-            // );
-        }
-    }
-    println!("done");
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,19 +147,19 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        // G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) ))
-        let (ltl, ltl_ctx) = PLTL::from_string(
-            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) -> (r U t)) ) ))",
-        )
-        .unwrap();
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .unwrap();
+
+        let (ltl, ltl_ctx) = PLTL::from_string("(p U q) -> (p S q)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-        // println!("ltl: {ltl}");
+        println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
-        // println!("ctx: {ctx}");
+        println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
         let dump = dump(&ctx, &ltl_ctx, 0, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {
-            // println!("{}", format_state(state, &ltl_ctx));
             for (character, transition_to) in transitions.iter().enumerate() {
                 println!(
                     "  0b{:b} -> {}",

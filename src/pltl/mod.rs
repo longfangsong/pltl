@@ -194,10 +194,10 @@ impl BinaryOp {
 
     pub fn with_weaken_state(&self, weaken_state: bool) -> Self {
         match (self, weaken_state) {
-            (BinaryOp::WeakSince, true) => BinaryOp::Since,
-            (BinaryOp::Since, false) => BinaryOp::WeakSince,
-            (BinaryOp::WeakBackTo, true) => BinaryOp::BackTo,
-            (BinaryOp::BackTo, false) => BinaryOp::WeakBackTo,
+            (BinaryOp::WeakSince | BinaryOp::Since, false) => BinaryOp::Since,
+            (BinaryOp::WeakSince | BinaryOp::Since, true) => BinaryOp::WeakSince,
+            (BinaryOp::WeakBackTo | BinaryOp::BackTo, false) => BinaryOp::BackTo,
+            (BinaryOp::WeakBackTo | BinaryOp::BackTo, true) => BinaryOp::WeakBackTo,
             _ => *self,
         }
     }
