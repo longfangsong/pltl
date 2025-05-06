@@ -18,14 +18,15 @@ fn local_post_update(f: &LabeledPLTL, letter: BitSet32, past_st: BitSet32) -> La
             unreachable!("not a psf")
         };
         if past_st.contains(id) {
-            result = result & local_after(&psf.weaken_condition(), letter, past_st);
+            let sub_result = local_after(&psf.weaken_condition(), letter, past_st);
+            result = result & sub_result;
         }
     }
     result
 }
 
 pub fn local_after(f: &LabeledPLTL, letter: BitSet32, past_st: BitSet32) -> LabeledPLTL {
-    match f {
+    let result = match f {
         LabeledPLTL::Top => LabeledPLTL::Top,
         LabeledPLTL::Bottom => LabeledPLTL::Bottom,
         LabeledPLTL::Atom(atom) => {
@@ -71,7 +72,7 @@ pub fn local_after(f: &LabeledPLTL, letter: BitSet32, past_st: BitSet32) -> Labe
                 }
             }
         }
-        LabeledPLTL::Release { weak, lhs, rhs } => {
+        LabeledPLTL::Release { lhs, rhs, .. } => {
             let rhs_after = local_after(rhs, letter, past_st);
             if rhs_after == LabeledPLTL::Bottom {
                 LabeledPLTL::Bottom
@@ -86,7 +87,8 @@ pub fn local_after(f: &LabeledPLTL, letter: BitSet32, past_st: BitSet32) -> Labe
             }
         }
         LabeledPLTL::BinaryTemporal { .. } => local_after(&f.weaken_condition(), letter, past_st),
-    }
+    };
+    result
 }
 
 pub fn after_function(labeled_pltl: &LabeledPLTL, letter: u32) -> LabeledPLTL {
@@ -106,21 +108,10 @@ mod tests {
 
     #[test]
     fn test_after_function() {
-        let (pltl, ctx) = PLTL::from_string("G (p | Y q)").unwrap();
+        let (pltl, ctx) = PLTL::from_string("(p W q) W 0").unwrap();
         let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
         let (labeled_pltl, context) = LabeledPLTL::new(&pltl);
-        let results = (0..4)
-            .map(|letter| after_function(&labeled_pltl, letter))
-            .collect::<Vec<_>>();
-        for result in &results {
-            println!("{}", result.clone().simplify());
-        }
-        println!("===");
-        let next_resuslts = (0u32..4)
-            .map(|letter| after_function(&results[letter as usize], letter))
-            .collect::<Vec<_>>();
-        for result in next_resuslts {
-            println!("{}", result.simplify());
-        }
+        let result = after_function(&labeled_pltl, 0);
+        println!("{}", result.simplify());
     }
 }

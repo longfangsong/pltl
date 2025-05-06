@@ -141,16 +141,14 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string(
-            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) <-> (r U t)) ) ))",
-        )
+        let (ltl, ltl_ctx) = PLTL::from_string("G(p U q)")
         .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
         println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
-        let dump = dump(&ctx, &ltl_ctx, 0, 0, &weakening_condition_automata);
+        let dump = dump(&ctx, &ltl_ctx, 0, 1, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {
             println!("{}", format_state(state, &ltl_ctx));
             for (character, transition_to) in transitions.iter().enumerate() {

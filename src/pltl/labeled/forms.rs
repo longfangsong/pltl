@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn test_simplify() {
         // let pltl = parse("⊥ ∨ (X q) ∨ (⊤ ∧ ⊥) ∨ ⊤ ∨ (⊥ ∧ ⊤)").unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string("⊥ ∨ (X q) ∨ (⊤ ∧ ⊥) ∨ ⊤ ∨ (⊥ ∧ ⊤)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("⊤ W (p ∧ ⊥)").unwrap();
         // let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let (ltl, ctx) = LabeledPLTL::new(&ltl);
         let ltl = ltl.simplify();

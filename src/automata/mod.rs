@@ -91,8 +91,8 @@ impl Context {
         u_items.sort();
         let mut v_items: Vec<_> = v_items.into_iter().collect();
         v_items.sort();
-        let m_sets = powerset_vec(u_items.iter().cloned());
-        let n_sets = powerset_vec(v_items.iter().cloned());
+        let m_sets = powerset_vec(&u_items);
+        let n_sets = powerset_vec(&v_items);
         Self {
             initial: labeled_pltl,
             label_context: psf_context,
@@ -447,7 +447,7 @@ impl AllSubAutomatas {
                 makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
             }
         }
-        makefile_content += &format!("\n\tautfilt --gra --generic --complete -D -o {file_name} ");
+        makefile_content += &format!("\n\tautfilt --gra --generic --complete -D -S -o {file_name} ");
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
                 if m_id == 0 && n_id == 0 {

@@ -151,15 +151,17 @@ mod tests {
             .num_threads(1)
             .build_global()
             .unwrap();
-
-        let (ltl, ltl_ctx) = PLTL::from_string("(p U q) -> (p S q)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("F (p & (p U t))").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
         println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
-        let dump = dump(&ctx, &ltl_ctx, 0, &weakening_condition_automata);
+        let init_state = initial_state(&ctx, 0b10);
+        println!("init: {}", format_state(&(init_state.0, init_state.1, weakening_condition_automata.init_state.clone()), &ltl_ctx));
+        let dump = dump(&ctx, &ltl_ctx, 0b10 , &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {
+            println!("{}", format_state(state, &ltl_ctx));
             for (character, transition_to) in transitions.iter().enumerate() {
                 println!(
                     "  0b{:b} -> {}",

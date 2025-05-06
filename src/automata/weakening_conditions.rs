@@ -114,11 +114,13 @@ mod tests {
     #[test]
     fn test_dump() {
         let (ltl, ltl_ctx) = PLTL::from_string(
-            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) <-> (r U t)) ) ))",
+            "G(p U q)",
         )
         .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
+        println!("ltl: {ltl}");
         let ctx = Context::new(&ltl);
+        println!("ctx: {ctx}");
         let dump = dump(&ctx, &ltl_ctx);
         for (state, transitions) in &dump.transitions {
             println!(

@@ -134,47 +134,6 @@ pub fn dump<'ctx, 'state: 'ctx>(
     result
 }
 
-// pub fn dump_hoa(
-//     ctx: &Context,
-//     u_item_id: u32,
-//     n_set: BitSet32,
-//     weakening_condition_automata: &AutomataDump<weakening_conditions::State>,
-// ) -> HoaAutomaton {
-//     let init_state = initial_state(ctx, u_item_id, n_set);
-//     let dump = dump(
-//         ctx,
-//         u_item_id,
-//         n_set,
-//         &init_state,
-//         weakening_condition_automata,
-//     );
-//     let mut states = Vec::with_capacity(dump.state_id_map.len());
-//     for (from, targets) in &dump.transitions {
-
-//     }
-//     HoaAutomaton::from_parts(
-//         Header::from_vec(vec![
-//             HeaderItem::v1(),
-//             HeaderItem::Name(format!("guarantee_{}_0b{:b}", u_item_id, n_set)),
-//             HeaderItem::Start(StateConjunction::singleton(
-//                 dump.state_id_map[&(
-//                     init_state.clone(),
-//                     weakening_condition_automata.init_state.clone(),
-//                 )] as _,
-//             )),
-//             HeaderItem::AcceptanceName(AcceptanceName::Buchi, vec![AcceptanceInfo::Int(1)]),
-//             HeaderItem::Acceptance(1, AcceptanceCondition::Inf(AcceptanceAtom::Positive(0))),
-//             HeaderItem::Properties(vec![
-//                 Property::Deterministic,
-//                 Property::Complete,
-//                 Property::StateAcceptance,
-//             ]),
-//             HeaderItem::AP(ctx.pltl_context.atoms.clone()),
-//         ]),
-//         states.into(),
-//     )
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,7 +142,7 @@ mod tests {
     #[test]
     fn test_dump_hoa() {
         let (ltl, ltl_ctx) = PLTL::from_string(
-            "G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) | ( ((p S q) <-> (r U t)) ) ))",
+            "G(p U q)",
         )
         .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
@@ -191,7 +150,7 @@ mod tests {
         let ctx = Context::new(&ltl);
         println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
-        let dump = dump(&ctx, &ltl_ctx, 0, 0, &weakening_condition_automata);
+        let dump = dump(&ctx, &ltl_ctx, 0, 1, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {
             println!("{}", format_state(state, &ltl_ctx));
             for (character, transition_to) in transitions.iter().enumerate() {
