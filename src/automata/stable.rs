@@ -19,7 +19,9 @@ pub fn transition(
     bed_next_state: &[LabeledPLTL],
     letter: BitSet32,
 ) -> (LabeledPLTL, LabeledPLTL) {
-    let after_function_first_part = after_function(&state.0, letter).simplify();
+    // println!("after_function({:?}, {letter})", state.0);
+    let after_function_first_part =
+        after_function(&state.0, letter, &ctx.local_after_cache).simplify();
     let second_part = if matches!(state.1, LabeledPLTL::Bottom) {
         let result: Vec<_> = bed_next_state
             .into_par_iter()
@@ -33,7 +35,7 @@ pub fn transition(
             .collect();
         LabeledPLTL::Logical(BinaryOp::Or, result)
     } else {
-        after_function(&state.1, letter)
+        after_function(&state.1, letter, &ctx.local_after_cache)
     };
     (after_function_first_part, second_part.simplify())
 }
@@ -147,19 +149,25 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(1)
-            .build_global()
-            .unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string("F (p & (p U t))").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("¬(g0 & g1) & ¬(g0 & g2) & ¬(g1 & g0) & ¬(g1 & g2) & ¬(g2 & g0) & ¬(g2 & g1) & G(F(¬r0 ~S g0)) & G(F(¬r1 ~S g1)) & G(F(¬r2 ~S g2)) & G(g0 -> (r0 | Y(r0 B ¬g0))) & G(g1 -> (r1 | Y(r1 B ¬g1))) & G(g2 -> (r2 | Y(r2 B ¬g2)))").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
-        let ctx = Context::new(&ltl);
+        let ctx = Context::new(&ltl, &ltl_ctx);
         println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
-        let init_state = initial_state(&ctx, 0b10);
-        println!("init: {}", format_state(&(init_state.0, init_state.1, weakening_condition_automata.init_state.clone()), &ltl_ctx));
-        let dump = dump(&ctx, &ltl_ctx, 0b10 , &weakening_condition_automata);
+        let init_state = initial_state(&ctx, 0b0);
+        println!(
+            "init: {}",
+            format_state(
+                &(
+                    init_state.0,
+                    init_state.1,
+                    weakening_condition_automata.init_state.clone()
+                ),
+                &ltl_ctx
+            )
+        );
+        let dump = dump(&ctx, &ltl_ctx, 0b0, &weakening_condition_automata);
         for (state, transitions) in &dump.transitions {
             println!("{}", format_state(state, &ltl_ctx));
             for (character, transition_to) in transitions.iter().enumerate() {

@@ -56,7 +56,7 @@ pub trait BitSet: Clone + PartialEq + Eq + PartialOrd + Ord {
         self.len() == 0
     }
     fn into_par_iter(self) -> impl ParallelIterator<Item = u32>;
-    fn sub_power_set(&self) -> Vec<Self>;
+    fn sub_sets(&self) -> Vec<Self>;
 }
 
 pub type BitSet32 = u32;
@@ -178,7 +178,7 @@ impl BitSet for BitSet32 {
         *self == 0
     }
 
-    fn sub_power_set(&self) -> Vec<Self> {
+    fn sub_sets(&self) -> Vec<Self> {
         let mut result = Vec::new();
         for i in 0..=*self {
             if i.is_subset(self) {
@@ -206,9 +206,9 @@ pub fn powerset<T: Clone + std::cmp::Eq + std::hash::Hash>(
 }
 
 pub fn powerset_vec<T: Clone>(origin: &[T]) -> Vec<Vec<T>> {
-    BitSet32::power_set_of_size(origin.len()).map(|bits| {
-        bits.iter().map(|i| origin[i as usize].clone()).collect()
-    }).collect()
+    BitSet32::power_set_of_size(origin.len())
+        .map(|bits| bits.iter().map(|i| origin[i as usize].clone()).collect())
+        .collect()
 }
 
 pub fn character_to_label_expression(
@@ -256,7 +256,7 @@ mod tests {
         //     BitSet32::full_with_size(0),
         //     BitSet32::full_with_size(1),
         // ];
-        let sub_power_set = set.sub_power_set();
+        let sub_power_set = set.sub_sets();
         for set in sub_power_set {
             println!("set: 0b{set:b}");
         }

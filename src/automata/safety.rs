@@ -36,7 +36,7 @@ pub fn transition(
         }
         LabeledPLTL::Logical(BinaryOp::Or, result).simplify()
     } else {
-        after_function(state, letter).simplify()
+        after_function(state, letter, &ctx.local_after_cache).simplify()
     }
 }
 
@@ -141,11 +141,11 @@ mod tests {
 
     #[test]
     fn test_dump_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string("G(p U q)")
+        let (ltl, ltl_ctx) = PLTL::from_string("¬(g0 & g1) & ¬(g0 & g2) & ¬(g1 & g0) & ¬(g1 & g2) & ¬(g2 & g0) & ¬(g2 & g1) & G(F(¬r0 ~S g0)) & G(F(¬r1 ~S g1)) & G(F(¬r2 ~S g2)) & G(g0 -> (r0 | Y(r0 B ¬g0))) & G(g1 -> (r1 | Y(r1 B ¬g1))) & G(g2 -> (r2 | Y(r2 B ¬g2)))")
         .unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
-        let ctx = Context::new(&ltl);
+        let ctx = Context::new(&ltl, &ltl_ctx);
         println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
         let dump = dump(&ctx, &ltl_ctx, 0, 1, &weakening_condition_automata);

@@ -4,7 +4,7 @@ use crate::{
         labeled::{self, LabeledPLTL},
         PLTL,
     },
-    utils::{character_to_label_expression, powerset_vec, BitSet, Map},
+    utils::{character_to_label_expression, powerset_vec, BitSet, BitSet32, Map},
 };
 use hoa::{
     body::{Edge, Label},
@@ -31,7 +31,7 @@ mod weakening_conditions;
 #[derive(Debug)]
 pub struct Context {
     pub initial: LabeledPLTL,
-    // pub pltl_context: pltl::Context,
+    pub pltl_context: pltl::Context,
     pub label_context: labeled::Context,
     // ci => cj
     pub saturated_c_sets: Vec<Vec<u32>>,
@@ -40,8 +40,10 @@ pub struct Context {
     pub n_sets: Vec<Vec<LabeledPLTL>>,
     pub m_sets: Vec<Vec<LabeledPLTL>>,
 
-    pub v_rewrite_cache: RwLock<Map<(LabeledPLTL, u32), LabeledPLTL>>,
-    pub u_rewrite_cache: RwLock<Map<(LabeledPLTL, u32), LabeledPLTL>>,
+    pub v_rewrite_cache: RwLock<Map<(LabeledPLTL, BitSet32), LabeledPLTL>>,
+    pub u_rewrite_cache: RwLock<Map<(LabeledPLTL, BitSet32), LabeledPLTL>>,
+
+    pub local_after_cache: Vec<Vec<RwLock<Map<LabeledPLTL, LabeledPLTL>>>>,
 }
 
 impl Context {
@@ -83,7 +85,7 @@ impl Context {
             .collect()
     }
 
-    pub fn new(ltl: &PLTL) -> Self {
+    pub fn new(ltl: &PLTL, pltl_context: &pltl::Context) -> Self {
         let (labeled_pltl, psf_context) = LabeledPLTL::new(ltl);
         let saturated_c_sets = Self::compute_saturated_c_set(&psf_context);
         let (u_items, v_items) = labeled_pltl.u_v_subformulas();
@@ -93,8 +95,18 @@ impl Context {
         v_items.sort();
         let m_sets = powerset_vec(&u_items);
         let n_sets = powerset_vec(&v_items);
+        let letter_powerset_len = 1u32 << pltl_context.atoms.len();
+        let max_c_set_count = 1 << psf_context.past_subformulas.len();
+        let local_after_cache = (0..letter_powerset_len)
+            .map(|_| {
+                (0..max_c_set_count)
+                    .map(|_| RwLock::new(Map::default()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         Self {
             initial: labeled_pltl,
+            pltl_context: pltl_context.clone(),
             label_context: psf_context,
             saturated_c_sets,
             u_items,
@@ -103,6 +115,7 @@ impl Context {
             m_sets,
             v_rewrite_cache: RwLock::new(Map::default()),
             u_rewrite_cache: RwLock::new(Map::default()),
+            local_after_cache,
         }
     }
 
@@ -151,17 +164,17 @@ impl Context {
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.label_context)?;
-        for (i, s) in self.saturated_c_sets.iter().enumerate() {
-            writeln!(
-                f,
-                "J{}: {{{}}}",
-                i,
-                s.iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
-        }
+        // for (i, s) in self.saturated_c_sets.iter().enumerate() {
+        //     writeln!(
+        //         f,
+        //         "J{}: {{{}}}",
+        //         i,
+        //         s.iter()
+        //             .map(|x| x.to_string())
+        //             .collect::<Vec<_>>()
+        //             .join(", ")
+        //     )?;
+        // }
         for (i, u) in self.u_items.iter().enumerate() {
             writeln!(f, "u{i}: {u}")?;
         }
@@ -447,7 +460,8 @@ impl AllSubAutomatas {
                 makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
             }
         }
-        makefile_content += &format!("\n\tautfilt --gra --generic --complete -D -S -o {file_name} ");
+        makefile_content +=
+            &format!("\n\tautfilt --gra --generic --complete -D -S -o {file_name} ");
         for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
             for n_id in 0u32..(1 << self.safety_automatas.len()) {
                 if m_id == 0 && n_id == 0 {
@@ -549,7 +563,7 @@ mod tests {
         let (ltl, ltl_ctx) = PLTL::from_string("G p | F (p S q) & (r B s)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
-        let ctx = Context::new(&ltl);
+        let ctx = Context::new(&ltl, &ltl_ctx);
         println!("ctx: {ctx}");
         let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
         println!("{:?}", automatas.to_dots(&ctx, &ltl_ctx));

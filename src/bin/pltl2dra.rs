@@ -64,7 +64,7 @@ fn main() -> io::Result<()> {
         .to_no_fgoh()
         .to_negation_normal_form()
         .simplify();
-    let ctx = Context::new(&pltl_formula);
+    let ctx = Context::new(&pltl_formula, &atom_map);
 
     let automatas = AllSubAutomatas::new(&ctx, &atom_map);
     let files = automatas.to_files();

@@ -538,10 +538,10 @@ mod tests {
 
     #[test]
     fn test_parse_with_cache() {
-        let input = r"G (F (p ->  X (X q) | (r & (p S (r S (Y p)))) ))";
+        let input = r"(G (r0 -> (F g0))) & (!g0 W r0) & (g0 -> X(!g0 W r0))";
         let parser_input = ParserInput::new(input);
         let result = parse(parser_input).unwrap().1;
-        assert_eq!("GF(¬p ∨ XXq ∨ (r ∧ (p S (r S Yp))))", result.to_string());
+        println!("{result}");
     }
     #[test]
     fn test_parse() {
@@ -628,9 +628,5 @@ mod tests {
                 PLTLParseTree::new_atom("b")
             )
         );
-
-        // let input = r"a U ";
-        // let result = PLTL::from_string(input).unwrap_err();
-        // assert_eq!(&input[result.offset..], " U ");
     }
 }

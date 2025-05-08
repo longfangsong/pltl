@@ -25,6 +25,9 @@ serde-wasm-bindgen = "0.6.5"
 smallvec = "1.14.0"
 wasm-bindgen = "0.2.100"
 
+[profile.release]
+debug = true
+
 [features]
 default = ["generator"]
 generator = ["dep:rand"]

@@ -18,7 +18,12 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
         .map(|(i, _)| {
             let mut result_i = Vec::new();
             'outer: for &j in &ctx.saturated_c_sets[i] {
-                let mut result = local_after(&current[j as usize], letter, i as u32);
+                let mut result = local_after(
+                    &current[j as usize],
+                    letter,
+                    i as u32,
+                    &ctx.local_after_cache,
+                );
                 if result == LabeledPLTL::Bottom {
                     continue;
                 }
@@ -27,7 +32,7 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
                         .clone()
                         .c_rewrite(j)
                         .weaken_condition();
-                    let after_wc = local_after(wc, letter, i as u32);
+                    let after_wc = local_after(wc, letter, i as u32, &ctx.local_after_cache);
                     if after_wc == LabeledPLTL::Bottom {
                         continue 'outer;
                     }
@@ -113,13 +118,10 @@ mod tests {
 
     #[test]
     fn test_dump() {
-        let (ltl, ltl_ctx) = PLTL::from_string(
-            "G(p U q)",
-        )
-        .unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("G(p U q)").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
-        let ctx = Context::new(&ltl);
+        let ctx = Context::new(&ltl, &ltl_ctx);
         println!("ctx: {ctx}");
         let dump = dump(&ctx, &ltl_ctx);
         for (state, transitions) in &dump.transitions {

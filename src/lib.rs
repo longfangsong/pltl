@@ -16,7 +16,7 @@ pub fn to_dots(input: &str) -> JsValue {
         .to_no_fgoh()
         .to_negation_normal_form()
         .simplify();
-    let context = automata::Context::new(&pltl_formula);
+    let context = automata::Context::new(&pltl_formula, &pltl_ctx);
     let all_sub_automatas = automata::AllSubAutomatas::new(&context, &pltl_ctx);
     let result = all_sub_automatas.to_dots(&context, &pltl_ctx);
     serde_wasm_bindgen::to_value(&result).unwrap()
@@ -29,7 +29,7 @@ pub fn to_files(input: &str) -> JsValue {
         .to_no_fgoh()
         .to_negation_normal_form()
         .simplify();
-    let context = automata::Context::new(&pltl_formula);
+    let context = automata::Context::new(&pltl_formula, &pltl_ctx);
     let all_sub_automatas = automata::AllSubAutomatas::new(&context, &pltl_ctx);
     let result = all_sub_automatas.to_files();
     serde_wasm_bindgen::to_value(&result).unwrap()
