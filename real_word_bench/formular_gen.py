@@ -25,8 +25,17 @@ def generate_pltl(n: int) -> str:
     return " & ".join(result_subparts)
 
 def main():
-    print(generate_ltl(3))
-    print(generate_pltl(3))
+    import sys
+    if len(sys.argv) != 2:
+        print("用法: python formular_gen.py <n>")
+        sys.exit(1)
+    try:
+        n = int(sys.argv[1])
+    except ValueError:
+        print("错误: n 必须是一个整数")
+        sys.exit(1)
+    print(generate_ltl(n))
+    print(generate_pltl(n))
 
 if __name__ == "__main__":
     main()

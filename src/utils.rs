@@ -1,4 +1,5 @@
 use bimap::BiHashMap;
+use dashmap::DashMap;
 use fxhash::FxBuildHasher;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
@@ -11,6 +12,8 @@ use crate::automata::hoa::AbstractLabelExpression;
 // use crate::automata::hoa::AbstractLabelExpression;
 
 pub type Map<K, V> = HashMap<K, V, FxBuildHasher>;
+
+pub type ConcurrentMap<K, V> = DashMap<K, V, FxBuildHasher>;
 
 pub type Set<T> = HashSet<T, FxBuildHasher>;
 

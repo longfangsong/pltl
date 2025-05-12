@@ -3,11 +3,13 @@ use rayon::iter::{
 };
 
 use super::{hoa::format::AcceptanceName, HoaAutomatonBuilder};
-use crate::pltl::labeled::after_function::local_after;
 // use crate::pltl::labeled::info::psf_weaken_condition;
 use crate::{
     automata::Context,
-    pltl::{self, labeled::LabeledPLTL},
+    pltl::{
+        self,
+        labeled::{after_function::cache_local_past, LabeledPLTL},
+    },
     utils::{BitSet, BitSet32},
 };
 
@@ -18,12 +20,16 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
         .map(|(i, _)| {
             let mut result_i = Vec::new();
             'outer: for &j in &ctx.saturated_c_sets[i] {
-                let mut result = local_after(
-                    &current[j as usize],
-                    letter,
-                    i as u32,
-                    &ctx.local_after_cache,
-                );
+                cache_local_past(&current[j as usize], &ctx.local_after_cache);
+                let mut result = ctx
+                    .local_after_cache
+                    .read()
+                    .unwrap()
+                    .get(&current[j as usize])
+                    .unwrap()
+                    .get(letter, i as u32)
+                    .unwrap()
+                    .clone();
                 if result == LabeledPLTL::Bottom {
                     continue;
                 }
@@ -32,7 +38,16 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
                         .clone()
                         .c_rewrite(j)
                         .weaken_condition();
-                    let after_wc = local_after(wc, letter, i as u32, &ctx.local_after_cache);
+                    cache_local_past(wc, &ctx.local_after_cache);
+                    let after_wc = ctx
+                        .local_after_cache
+                        .read()
+                        .unwrap()
+                        .get(wc)
+                        .unwrap()
+                        .get(letter, i as u32)
+                        .unwrap()
+                        .clone();
                     if after_wc == LabeledPLTL::Bottom {
                         continue 'outer;
                     }

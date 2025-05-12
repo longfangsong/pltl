@@ -36,7 +36,7 @@ pub fn transition(
         }
         LabeledPLTL::Logical(BinaryOp::Or, result).simplify()
     } else {
-        after_function(state, letter, &ctx.local_after_cache).simplify()
+        after_function(state, letter, &ctx.local_after_cache)
     }
 }
 

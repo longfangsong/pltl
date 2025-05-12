@@ -1,10 +1,10 @@
 use crate::{
     pltl::{
         self,
-        labeled::{self, LabeledPLTL},
+        labeled::{self, after_function::CacheItem, LabeledPLTL},
         PLTL,
     },
-    utils::{character_to_label_expression, powerset_vec, BitSet, BitSet32, Map},
+    utils::{character_to_label_expression, powerset_vec, BitSet, ConcurrentMap, Map},
 };
 use hoa::{
     body::{Edge, Label},
@@ -20,7 +20,7 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::{fmt, hash::Hash, sync::RwLock};
+use std::{fmt, hash::Hash, sync::RwLock, time::Instant};
 
 mod guarantee;
 pub mod hoa;
@@ -40,10 +40,10 @@ pub struct Context {
     pub n_sets: Vec<Vec<LabeledPLTL>>,
     pub m_sets: Vec<Vec<LabeledPLTL>>,
 
-    pub v_rewrite_cache: RwLock<Map<(LabeledPLTL, BitSet32), LabeledPLTL>>,
-    pub u_rewrite_cache: RwLock<Map<(LabeledPLTL, BitSet32), LabeledPLTL>>,
+    pub v_rewrite_cache: Vec<ConcurrentMap<LabeledPLTL, LabeledPLTL>>,
+    pub u_rewrite_cache: Vec<ConcurrentMap<LabeledPLTL, LabeledPLTL>>,
 
-    pub local_after_cache: Vec<Vec<RwLock<Map<LabeledPLTL, LabeledPLTL>>>>,
+    pub local_after_cache: RwLock<Map<LabeledPLTL, CacheItem>>,
 }
 
 impl Context {
@@ -95,15 +95,8 @@ impl Context {
         v_items.sort();
         let m_sets = powerset_vec(&u_items);
         let n_sets = powerset_vec(&v_items);
-        let letter_powerset_len = 1u32 << pltl_context.atoms.len();
-        let max_c_set_count = 1 << psf_context.past_subformulas.len();
-        let local_after_cache = (0..letter_powerset_len)
-            .map(|_| {
-                (0..max_c_set_count)
-                    .map(|_| RwLock::new(Map::default()))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
+        let v_rewrite_cache = m_sets.iter().map(|_| ConcurrentMap::default()).collect();
+        let u_rewrite_cache = n_sets.iter().map(|_| ConcurrentMap::default()).collect();
         Self {
             initial: labeled_pltl,
             pltl_context: pltl_context.clone(),
@@ -113,28 +106,31 @@ impl Context {
             v_items,
             n_sets,
             m_sets,
-            v_rewrite_cache: RwLock::new(Map::default()),
-            u_rewrite_cache: RwLock::new(Map::default()),
-            local_after_cache,
+            v_rewrite_cache,
+            u_rewrite_cache,
+            local_after_cache: RwLock::new(Map::default()),
         }
     }
 
     pub fn cached_v_rewrite(&self, v_item: &LabeledPLTL, m_set: u32) -> LabeledPLTL {
+        let start = Instant::now();
         if matches!(
             v_item,
             LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_)
         ) {
             return v_item.clone();
         }
-        let cache_read = self.v_rewrite_cache.read().unwrap();
-        if let Some(result) = cache_read.get(&(v_item.clone(), m_set)) {
+
+        let get_time_start = Instant::now();
+        let got_item = self.v_rewrite_cache[m_set as usize].get(v_item);
+        if let Some(result) = got_item {
             return result.clone();
         }
-        drop(cache_read);
         let v_item = v_item.clone();
         let result = v_item.clone().v_rewrite(&self.m_sets[m_set as usize]);
-        let mut cache_write = self.v_rewrite_cache.write().unwrap();
-        cache_write.insert((v_item, m_set), result.clone());
+
+        self.v_rewrite_cache[m_set as usize].insert(v_item, result.clone());
+
         result
     }
 
@@ -145,18 +141,16 @@ impl Context {
         ) {
             return u_item.clone();
         }
-        let cache_read = self.u_rewrite_cache.read().unwrap();
-        if let Some(result) = cache_read.get(&(u_item.clone(), n_set)) {
+        let got_item = self.u_rewrite_cache[n_set as usize].get(u_item);
+        if let Some(result) = got_item {
             return result.clone();
         }
-        drop(cache_read);
         let u_item = u_item.clone();
         let result = u_item
             .clone()
             .u_rewrite(&self.n_sets[n_set as usize])
             .simplify();
-        let mut cache_write = self.u_rewrite_cache.write().unwrap();
-        cache_write.insert((u_item, n_set), result.clone());
+        self.u_rewrite_cache[n_set as usize].insert(u_item, result.clone());
         result
     }
 }
@@ -164,17 +158,17 @@ impl Context {
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.label_context)?;
-        // for (i, s) in self.saturated_c_sets.iter().enumerate() {
-        //     writeln!(
-        //         f,
-        //         "J{}: {{{}}}",
-        //         i,
-        //         s.iter()
-        //             .map(|x| x.to_string())
-        //             .collect::<Vec<_>>()
-        //             .join(", ")
-        //     )?;
-        // }
+        for (i, s) in self.saturated_c_sets.iter().enumerate() {
+            writeln!(
+                f,
+                "J{}: {{{}}}",
+                i,
+                s.iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
         for (i, u) in self.u_items.iter().enumerate() {
             writeln!(f, "u{i}: {u}")?;
         }
