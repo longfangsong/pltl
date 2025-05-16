@@ -5,6 +5,125 @@ use crate::pltl::BinaryOp;
 use super::LabeledPLTL;
 
 impl LabeledPLTL {
+    fn simplify_until_once(
+        weak: bool,
+        lhs: Box<LabeledPLTL>,
+        rhs: Box<LabeledPLTL>,
+    ) -> (Self, bool) {
+        match (weak, lhs, rhs) {
+            (_, box LabeledPLTL::Bottom, rhs) => (rhs.simplify(), false),
+            (_, _, box LabeledPLTL::Top) => (LabeledPLTL::Top, false),
+            (_, lhs, rhs) if lhs == rhs => (lhs.simplify(), false),
+            (false, _, box LabeledPLTL::Bottom) => (LabeledPLTL::Bottom, false),
+            (true, box LabeledPLTL::Top, _) => (LabeledPLTL::Top, false),
+            (
+                false,
+                lhs,
+                box LabeledPLTL::Until {
+                    weak: false,
+                    lhs: rlhs,
+                    rhs: rrhs,
+                },
+            ) if lhs == rlhs => {
+                let lhs = lhs.simplify();
+                let new_rhs = rrhs.simplify();
+                let can_fold_further = match (&lhs, &new_rhs) {
+                    (LabeledPLTL::Bottom, _) => true,
+                    (_, LabeledPLTL::Top) => true,
+                    (_, LabeledPLTL::Bottom) => true,
+                    (
+                        lhs,
+                        LabeledPLTL::Until {
+                            weak: false,
+                            lhs: box rlhs,
+                            ..
+                        },
+                    ) if lhs == rlhs => true,
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    LabeledPLTL::Until {
+                        weak: false,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(new_rhs),
+                    },
+                    can_fold_further,
+                )
+            }
+            (
+                true,
+                box LabeledPLTL::Until {
+                    weak: true,
+                    lhs: llhs,
+                    rhs: lrhs,
+                },
+                rhs,
+            ) if lrhs == rhs => {
+                let new_lhs = llhs.simplify();
+                let rhs = rhs.simplify();
+                let can_fold_further = match (&new_lhs, &rhs) {
+                    (LabeledPLTL::Bottom, _) => true,
+                    (_, LabeledPLTL::Top) => true,
+                    (LabeledPLTL::Top, _) => true,
+                    (
+                        LabeledPLTL::Until {
+                            weak: true,
+                            rhs: box lrhs,
+                            ..
+                        },
+                        rhs,
+                    ) if lrhs == rhs => true,
+                    (new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    LabeledPLTL::Until {
+                        weak: true,
+                        lhs: Box::new(new_lhs),
+                        rhs: Box::new(rhs),
+                    },
+                    can_fold_further,
+                )
+            }
+            (weak, lhs, rhs) => {
+                let new_lhs = lhs.simplify();
+                let new_rhs = rhs.simplify();
+                let can_fold_further = match (weak, &new_lhs, &new_rhs) {
+                    (_, LabeledPLTL::Bottom, _) => true,
+                    (_, _, LabeledPLTL::Top) => true,
+                    (false, _, LabeledPLTL::Bottom) => true,
+                    (true, LabeledPLTL::Top, _) => true,
+                    (
+                        false,
+                        lhs,
+                        LabeledPLTL::Until {
+                            weak: false,
+                            lhs: box rlhs,
+                            ..
+                        },
+                    ) if lhs == rlhs => true,
+                    (
+                        true,
+                        LabeledPLTL::Until {
+                            weak: true,
+                            rhs: box lrhs,
+                            ..
+                        },
+                        rhs,
+                    ) if lrhs == rhs => true,
+                    (_, new_lhs, new_rhs) => new_lhs == new_rhs,
+                };
+                (
+                    LabeledPLTL::Until {
+                        weak,
+                        lhs: Box::new(new_lhs),
+                        rhs: Box::new(new_rhs),
+                    },
+                    can_fold_further,
+                )
+            }
+        }
+    }
+
     fn simplify_release_once(
         weak: bool,
         lhs: Box<LabeledPLTL>,
@@ -262,8 +381,6 @@ impl LabeledPLTL {
             } => {
                 if content.as_ref() == &LabeledPLTL::Bottom {
                     (LabeledPLTL::Bottom, false)
-                } else if let LabeledPLTL::Next(box inner_content) = *content {
-                    inner_content.simplify_once()
                 } else {
                     let (simplified, may_go_to_other_branch) = content.simplify_once();
                     (
@@ -316,133 +433,7 @@ impl LabeledPLTL {
                     may_go_to_other_branch,
                 )
             }
-            LabeledPLTL::Until {
-                lhs: box LabeledPLTL::Bottom,
-                rhs,
-                ..
-            } => (rhs.simplify(), false),
-            LabeledPLTL::Until {
-                rhs: box LabeledPLTL::Top,
-                ..
-            } => (LabeledPLTL::Top, false),
-            LabeledPLTL::Until { lhs, rhs, .. } if lhs == rhs => (lhs.simplify(), false),
-            LabeledPLTL::Until {
-                weak: false,
-                rhs: box LabeledPLTL::Bottom,
-                ..
-            } => (LabeledPLTL::Bottom, false),
-            LabeledPLTL::Until {
-                weak: true,
-                lhs: box LabeledPLTL::Top,
-                ..
-            } => (LabeledPLTL::Top, false),
-            LabeledPLTL::Until {
-                weak: false,
-                lhs,
-                rhs:
-                    box LabeledPLTL::Until {
-                        weak: false,
-                        lhs: rlhs,
-                        rhs: rrhs,
-                    },
-            } if lhs == rlhs => {
-                let lhs = lhs.simplify();
-                let new_rhs = rrhs.simplify();
-                let can_fold_further = match (&lhs, &new_rhs) {
-                    (LabeledPLTL::Bottom, _) => true,
-                    (_, LabeledPLTL::Top) => true,
-                    (_, LabeledPLTL::Bottom) => true,
-                    (
-                        lhs,
-                        LabeledPLTL::Until {
-                            weak: false,
-                            lhs: box rlhs,
-                            ..
-                        },
-                    ) if lhs == rlhs => true,
-                    (new_lhs, new_rhs) => new_lhs == new_rhs,
-                };
-                (
-                    LabeledPLTL::Until {
-                        weak: false,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(new_rhs),
-                    },
-                    can_fold_further,
-                )
-            }
-            LabeledPLTL::Until {
-                weak: true,
-                lhs:
-                    box LabeledPLTL::Until {
-                        weak: true,
-                        lhs: llhs,
-                        rhs: lrhs,
-                    },
-                rhs,
-            } if lrhs == rhs => {
-                let new_lhs = llhs.simplify();
-                let rhs = rhs.simplify();
-                let can_fold_further = match (&new_lhs, &rhs) {
-                    (LabeledPLTL::Bottom, _) => true,
-                    (_, LabeledPLTL::Top) => true,
-                    (LabeledPLTL::Top, _) => true,
-                    (
-                        LabeledPLTL::Until {
-                            weak: true,
-                            rhs: box lrhs,
-                            ..
-                        },
-                        rhs,
-                    ) if lrhs == rhs => true,
-                    (new_lhs, new_rhs) => new_lhs == new_rhs,
-                };
-                (
-                    LabeledPLTL::Until {
-                        weak: true,
-                        lhs: Box::new(new_lhs),
-                        rhs: Box::new(rhs),
-                    },
-                    can_fold_further,
-                )
-            }
-            LabeledPLTL::Until { weak, lhs, rhs } => {
-                let new_lhs = lhs.simplify();
-                let new_rhs = rhs.simplify();
-                let can_fold_further = match (weak, &new_lhs, &new_rhs) {
-                    (_, LabeledPLTL::Bottom, _) => true,
-                    (_, _, LabeledPLTL::Top) => true,
-                    (false, _, LabeledPLTL::Bottom) => true,
-                    (true, LabeledPLTL::Top, _) => true,
-                    (
-                        false,
-                        lhs,
-                        LabeledPLTL::Until {
-                            weak: false,
-                            lhs: box rlhs,
-                            ..
-                        },
-                    ) if lhs == rlhs => true,
-                    (
-                        true,
-                        LabeledPLTL::Until {
-                            weak: true,
-                            rhs: box lrhs,
-                            ..
-                        },
-                        rhs,
-                    ) if lrhs == rhs => true,
-                    (_, new_lhs, new_rhs) => new_lhs == new_rhs,
-                };
-                (
-                    LabeledPLTL::Until {
-                        weak,
-                        lhs: Box::new(new_lhs),
-                        rhs: Box::new(new_rhs),
-                    },
-                    can_fold_further,
-                )
-            }
+            LabeledPLTL::Until { weak, lhs, rhs } => Self::simplify_until_once(weak, lhs, rhs),
             LabeledPLTL::Release { weak, lhs, rhs } => Self::simplify_release_once(weak, lhs, rhs),
             LabeledPLTL::BinaryTemporal {
                 id,

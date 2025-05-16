@@ -4,7 +4,7 @@ use crate::{
         labeled::{self, after_function::CacheItem, LabeledPLTL},
         PLTL,
     },
-    utils::{character_to_label_expression, powerset_vec, BitSet, ConcurrentMap, Map},
+    utils::{character_to_label_expression, powerset_vec, BitSet, BitSet32, ConcurrentMap, Map},
 };
 use hoa::{
     body::{Edge, Label},
@@ -20,13 +20,88 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::{fmt, hash::Hash, sync::RwLock, time::Instant};
+use std::{collections::HashMap, fmt, hash::Hash, mem, sync::RwLock, time::Instant};
 
 mod guarantee;
 pub mod hoa;
 mod safety;
 pub mod stable;
 mod weakening_conditions;
+
+// cache for a certain m_set under a certain c_set
+#[derive(Debug, Clone)]
+pub struct MSetUnderCCache {
+    mask: BitSet32,
+    // c_set & mask -> m_set<c_set>
+    cache: Map<BitSet32, Vec<LabeledPLTL>>,
+}
+
+impl MSetUnderCCache {
+    fn append_one(&self, other: &MSetUnderCCache) -> MSetUnderCCache {
+        debug_assert_eq!(other.mask.len(), 1);
+        debug_assert_eq!(other.mask & self.mask, 0b0);
+        let mask = self.mask | other.mask;
+        let mut cache = Map::default();
+        let other_u_item = other.mask.trailing_zeros();
+        // let other_entry = &current_result[other_u_item as usize];
+        for (c_set, m_set) in self.cache.iter() {
+            // other is 0b0
+            let mut new_result = m_set.clone();
+            let other_content = other.get(0b0).unwrap();
+            new_result.extend(other_content.iter().cloned());
+            let new_c_set: u32 = *c_set;
+            cache.insert(new_c_set, new_result);
+            // other is mask
+            let mut new_result = m_set.clone();
+            let other_content = other.get(other.mask).unwrap();
+            new_result.extend(other_content.iter().cloned());
+            let new_c_set: u32 = *c_set | (1 << other_u_item);
+            cache.insert(new_c_set, new_result);
+        }
+        MSetUnderCCache { mask, cache }
+    }
+    // build cache
+    // Return m_set_id -> m_set<c_set>
+    pub fn build(u_items: &[LabeledPLTL]) -> Vec<MSetUnderCCache> {
+        let mut result: Vec<_> = (0..(1 << u_items.len()))
+            .map(|_| MSetUnderCCache {
+                mask: BitSet32::default(),
+                cache: Map::default(),
+            })
+            .collect();
+        result[0].cache.insert(0b0, Vec::new());
+        for (u_item_id, u_item) in u_items.iter().enumerate() {
+            let mask = u_item.past_subformula_ids();
+            let cache = mask
+                .sub_sets()
+                .into_par_iter()
+                .map(|c_set| {
+                    let single_result = u_item.clone().c_rewrite(c_set);
+                    (c_set, vec![single_result])
+                })
+                .collect();
+            result[1 << u_item_id] = MSetUnderCCache { mask, cache };
+        }
+        let mut current_considering = (0..u_items.len()).map(|i| 1u32 << i).collect::<Vec<_>>();
+        for _sub_part_length in 1..u_items.len() as u32 {
+            let mut new_considering = Vec::with_capacity(1 << u_items.len());
+            for from in current_considering.iter() {
+                let start_index = 32 - from.leading_zeros();
+                for to_append_index in start_index..(u_items.len() as u32) {
+                    new_considering.push(from | (1u32 << to_append_index));
+                    result[(from | (1u32 << to_append_index)) as usize] = result[*from as usize]
+                        .append_one(&result[(1u32 << to_append_index) as usize]);
+                }
+            }
+            mem::swap(&mut current_considering, &mut new_considering);
+        }
+        result
+    }
+
+    pub fn get(&self, c_set: u32) -> Option<&Vec<LabeledPLTL>> {
+        self.cache.get(&(c_set & self.mask))
+    }
+}
 
 #[derive(Debug)]
 pub struct Context {
@@ -37,11 +112,16 @@ pub struct Context {
     pub saturated_c_sets: Vec<Vec<u32>>,
     pub u_items: Vec<LabeledPLTL>,
     pub v_items: Vec<LabeledPLTL>,
+    pub m_sets_items_under_c_sets: Vec<MSetUnderCCache>,
+
     pub n_sets: Vec<Vec<LabeledPLTL>>,
     pub m_sets: Vec<Vec<LabeledPLTL>>,
 
     pub v_rewrite_cache: Vec<ConcurrentMap<LabeledPLTL, LabeledPLTL>>,
     pub u_rewrite_cache: Vec<ConcurrentMap<LabeledPLTL, LabeledPLTL>>,
+    // m_set -> c_set_with_mask -> f -> f[M<c_i>]
+    pub m_set_under_c_rewrite_cache:
+        Vec<Map<BitSet32, ConcurrentMap<LabeledPLTL, LabeledPLTL>>>,
 
     pub local_after_cache: RwLock<Map<LabeledPLTL, CacheItem>>,
 }
@@ -97,6 +177,12 @@ impl Context {
         let n_sets = powerset_vec(&v_items);
         let v_rewrite_cache = m_sets.iter().map(|_| ConcurrentMap::default()).collect();
         let u_rewrite_cache = n_sets.iter().map(|_| ConcurrentMap::default()).collect();
+        let m_sets_items_under_c_sets = MSetUnderCCache::build(&u_items);
+        let m_set_under_c_rewrite_cache = m_sets_items_under_c_sets.iter().map(|m_under_c_cache| {
+            m_under_c_cache.cache.iter().map(|(c_set, _)| {
+                (*c_set, ConcurrentMap::default())
+            }).collect()
+        }).collect();
         Self {
             initial: labeled_pltl,
             pltl_context: pltl_context.clone(),
@@ -109,24 +195,24 @@ impl Context {
             v_rewrite_cache,
             u_rewrite_cache,
             local_after_cache: RwLock::new(Map::default()),
+            m_sets_items_under_c_sets,
+            m_set_under_c_rewrite_cache,
         }
     }
 
-    pub fn cached_v_rewrite(&self, v_item: &LabeledPLTL, m_set: u32) -> LabeledPLTL {
-        let start = Instant::now();
+    pub fn cached_v_rewrite(&self, item: &LabeledPLTL, m_set: u32) -> LabeledPLTL {
         if matches!(
-            v_item,
+            item,
             LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_)
         ) {
-            return v_item.clone();
+            return item.clone();
         }
 
-        let get_time_start = Instant::now();
-        let got_item = self.v_rewrite_cache[m_set as usize].get(v_item);
+        let got_item = self.v_rewrite_cache[m_set as usize].get(item);
         if let Some(result) = got_item {
             return result.clone();
         }
-        let v_item = v_item.clone();
+        let v_item = item.clone();
         let result = v_item.clone().v_rewrite(&self.m_sets[m_set as usize]);
 
         self.v_rewrite_cache[m_set as usize].insert(v_item, result.clone());
@@ -134,18 +220,39 @@ impl Context {
         result
     }
 
-    pub fn cached_u_rewrite(&self, u_item: &LabeledPLTL, n_set: u32) -> LabeledPLTL {
+    pub fn cached_m_set_under_c_rewrite(
+        &self,
+        m_set: u32,
+        c_set: u32,
+        item: &LabeledPLTL,
+    ) -> LabeledPLTL {
+        let masked_c_set = self.m_sets_items_under_c_sets[m_set as usize].mask & c_set;
+        let entry = &self.m_set_under_c_rewrite_cache[m_set as usize][&masked_c_set];
+        if let Some(result) = entry.get(item) {
+            return result.clone();
+        } else {
+            let result = item.clone().v_rewrite(
+                &self.m_sets_items_under_c_sets[m_set as usize]
+                    .get(c_set as u32)
+                    .unwrap(),
+            ).simplify();
+            entry.insert(item.clone(), result.clone());
+            return result;
+        }
+    }
+
+    pub fn cached_u_rewrite(&self, iten: &LabeledPLTL, n_set: u32) -> LabeledPLTL {
         if matches!(
-            u_item,
+            iten,
             LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_)
         ) {
-            return u_item.clone();
+            return iten.clone();
         }
-        let got_item = self.u_rewrite_cache[n_set as usize].get(u_item);
+        let got_item = self.u_rewrite_cache[n_set as usize].get(iten);
         if let Some(result) = got_item {
             return result.clone();
         }
-        let u_item = u_item.clone();
+        let u_item = iten.clone();
         let result = u_item
             .clone()
             .u_rewrite(&self.n_sets[n_set as usize])
@@ -158,16 +265,20 @@ impl Context {
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.label_context)?;
-        for (i, s) in self.saturated_c_sets.iter().enumerate() {
-            writeln!(
-                f,
-                "J{}: {{{}}}",
-                i,
-                s.iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
+        if self.saturated_c_sets.len() < 16 {
+            for (i, s) in self.saturated_c_sets.iter().enumerate() {
+                writeln!(
+                    f,
+                    "J{}: {{{}}}",
+                    i,
+                    s.iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            }
+        } else {
+            writeln!(f, "J: <{}> Js", self.saturated_c_sets.len())?;
         }
         for (i, u) in self.u_items.iter().enumerate() {
             writeln!(f, "u{i}: {u}")?;
@@ -175,27 +286,35 @@ impl fmt::Display for Context {
         for (i, v) in self.v_items.iter().enumerate() {
             writeln!(f, "v{i}: {v}")?;
         }
-        for (i, n) in self.n_sets.iter().enumerate() {
-            writeln!(
-                f,
-                "N{}: {{{}}}",
-                i,
-                n.iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
+        if self.n_sets.len() < 16 {
+            for (i, n) in self.n_sets.iter().enumerate() {
+                writeln!(
+                    f,
+                    "N{}: {{{}}}",
+                    i,
+                    n.iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            }
+        } else {
+            writeln!(f, "N: <{}> Ns", self.n_sets.len())?;
         }
-        for (i, m) in self.m_sets.iter().enumerate() {
-            writeln!(
-                f,
-                "M{}: {{{}}}",
-                i,
-                m.iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
+        if self.m_sets.len() < 16 {
+            for (i, m) in self.m_sets.iter().enumerate() {
+                writeln!(
+                    f,
+                    "M{}: {{{}}}",
+                    i,
+                    m.iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            }
+        } else {
+            writeln!(f, "M: <{}> Ms", self.m_sets.len())?;
         }
         Ok(())
     }
@@ -561,5 +680,42 @@ mod tests {
         println!("ctx: {ctx}");
         let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
         println!("{:?}", automatas.to_dots(&ctx, &ltl_ctx));
+    }
+
+    #[test]
+    fn test_compute_m_sets_items_under_c_sets() {
+        let (ltl, ltl_ctx) = PLTL::from_string("F ( r & (r S p))").unwrap();
+        let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
+        let ctx = Context::new(&ltl, &ltl_ctx);
+        println!("ctx: {ctx}");
+        let result = MSetUnderCCache::build(&ctx.u_items);
+        for (m_set, result_at_m) in result.iter().enumerate() {
+            println!("m_set: 0b{m_set:03b}");
+            println!("    mask: 0b{:09b}", result_at_m.mask);
+            for (c_set, items) in result_at_m.cache.iter() {
+                println!(
+                    "    c_set: 0b{:03b}, items: {}",
+                    c_set,
+                    items
+                        .iter()
+                        .map(|item| item.format(&ltl_ctx))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
+        // println!("ctx: {:?}", ctx.m_sets_items_under_c_sets);
+        // for (c_set, m_rewrite_results) in ctx.m_sets_items_under_c_sets.iter().enumerate() {
+        //     for (m_set, items) in m_rewrite_results.iter().enumerate() {
+        //         println!(
+        //             "m_set: 0b{m_set:02b}, c_set: 0b{c_set:02b}, items: {}",
+        //             items
+        //                 .iter()
+        //                 .map(|item| item.format(&ltl_ctx))
+        //                 .collect::<Vec<_>>()
+        //                 .join(", ")
+        //         );
+        //     }
+        // }
     }
 }

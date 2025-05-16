@@ -97,4 +97,15 @@ mod tests {
         let result = after_function(&pltl, 0b01);
         println!("result: {result}");
     }
+
+    #[test]
+    fn test_after_function_2() {
+        let (pltl, _) = PLTL::from_string("F ( r & (r S p) )").unwrap();
+        let pltl = pltl.to_no_fgoh().to_negation_normal_form().simplify();
+        let result = after_function(&pltl, 0b10);
+        println!("result: {result}");
+
+        let result = after_function(&result, 0b00);
+        println!("result: {result}");
+    }
 }

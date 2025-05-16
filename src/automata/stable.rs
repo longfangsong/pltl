@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 use crate::{
     pltl::{
@@ -21,22 +21,32 @@ pub fn transition(
     bed_next_state: &[LabeledPLTL],
     letter: BitSet32,
 ) -> (LabeledPLTL, LabeledPLTL) {
-    let start = Instant::now();
-    let after_function_first_part = after_function(&state.0, letter, &ctx.local_after_cache);
+    let after_function_first_part = after_function(
+        &state.0,
+        letter,
+        &ctx.local_after_cache,
+    );
     let second_part = if matches!(state.1, LabeledPLTL::Bottom) {
         let result: Vec<_> = bed_next_state
             .into_par_iter()
-            .map(|bed_state| {
+            .enumerate()
+            .map(|(i, bed_state)| {
                 let first_part_in_second = after_function_first_part.clone();
-                let first_part_in_second = ctx.cached_v_rewrite(&first_part_in_second, m_set);
+                let first_part_in_second =
+                    ctx.cached_m_set_under_c_rewrite(m_set, i as u32, &first_part_in_second);
                 let second_part_in_second = bed_state.clone();
-                let second_part_in_second = ctx.cached_v_rewrite(&second_part_in_second, m_set);
+                let second_part_in_second =
+                    ctx.cached_m_set_under_c_rewrite(m_set, i as u32, &second_part_in_second);
                 first_part_in_second & second_part_in_second
             })
             .collect();
         LabeledPLTL::Logical(BinaryOp::Or, result).simplify()
     } else {
-        after_function(&state.1, letter, &ctx.local_after_cache)
+        after_function(
+            &state.1,
+            letter,
+            &ctx.local_after_cache,
+        )
     };
     (after_function_first_part, second_part)
 }
@@ -151,8 +161,7 @@ mod tests {
 
     #[test]
     fn test_dump_aaa_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string(            "¬(g0 & g1) & ¬(g0 & g2) & ¬(g1 & g0) & ¬(g1 & g2) & ¬(g2 & g0) & ¬(g2 & g1) & G(F(¬r0 ~S g0)) & G(F(¬r1 ~S g1)) & G(F(¬r2 ~S g2)) & G(g0 -> (r0 | Y(r0 B ¬g0))) & G(g1 -> (r1 | Y(r1 B ¬g1))) & G(g2 -> (r2 | Y(r2 B ¬g2)))",
-    ).unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("F ( r & (r S p))").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl, &ltl_ctx);
@@ -170,8 +179,20 @@ mod tests {
                 &ltl_ctx
             )
         );
-        let start = Instant::now();
-        let dump = dump(&ctx, &ltl_ctx, 0b0, &weakening_condition_automata);
+        for m in 0u32..(1 << ctx.u_items.len()) {
+            let dump = dump(&ctx, &ltl_ctx, m, &weakening_condition_automata);
+            println!("m_set: 0b{:b}, dump: {}", m, dump.transitions.len());
+        }
+        for (c_set, cache) in ctx.m_set_under_c_rewrite_cache.iter().enumerate() {
+            println!("m_set: 0b{:b}", c_set);
+            for (item, map) in cache.iter() {
+                println!("  c_set: 0b{:b}", item);
+                for kv in map.iter() {
+                    println!("    {} -> {}", kv.key(), kv.value());
+                }
+            }
+        }
+        // println!("dump: {}", dump.transitions.len());
         // println!("dump: {}", dump.transitions.len());
         // println!("time: {}s", start.elapsed().as_secs_f32());
         // println!("transition time: {}s", TRANSITION_TIME.load(Ordering::Relaxed) as f32 / 1e9);
@@ -214,7 +235,7 @@ mod tests {
         // println!("first part in second time: {}s", FIRST_PART_IN_SECOND_TIME.load(Ordering::Relaxed) as f32 / 1e9);
         // println!("cached v rewrite time: {}s", CACHED_V_REWRITE_TIME.load(Ordering::Relaxed) as f32 / 1e9);
         // println!("clone time: {}s", CLONE_TIME.load(Ordering::Relaxed) as f32 / 1e9);
-        println!("{}", dump.transitions.len());
+        // println!("{}", dump.len());
         // for (state, transitions) in &dump.transitions {
         // println!("{}", format_state(state, &ltl_ctx));
         // for (character, transition_to) in transitions.iter().enumerate() {

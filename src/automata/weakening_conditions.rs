@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_dump() {
-        let (ltl, ltl_ctx) = PLTL::from_string("G(p U q)").unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string("F(r & (r S p))").unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl, &ltl_ctx);
