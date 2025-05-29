@@ -27,11 +27,11 @@ use std::{
     sync::RwLock,
 };
 
-mod guarantee;
+pub mod guarantee;
 pub mod hoa;
-mod safety;
+pub mod safety;
 pub mod stable;
-mod weakening_conditions;
+pub mod weakening_conditions;
 
 // cache for a certain m_set under a certain c_set
 #[derive(Debug, Clone)]
@@ -462,7 +462,7 @@ impl fmt::Display for Context {
 #[derive(Debug, Clone)]
 pub struct HoaAutomatonBuilder<S, SF: Fn(&S, &pltl::Context) -> String> {
     init_state: S,
-    name: String,
+    pub name: String,
     is_accepting: fn(&S) -> bool,
     state_formatter: Option<SF>,
     accepting_name: AcceptanceName,
@@ -488,7 +488,7 @@ impl<S: Hash + Eq, F: Fn(&S, &pltl::Context) -> String + Clone> HoaAutomatonBuil
                 AcceptanceName::Buchi => vec![AcceptanceInfo::Int(1)],
                 AcceptanceName::CoBuchi => vec![AcceptanceInfo::Int(1)],
                 AcceptanceName::None => Vec::new(),
-                _ => unreachable!(),
+                _ => unreachable!("HoaAutomatonBuilder::new"),
             },
             accepting_name,
             state_id_map: Map::default(),
@@ -538,7 +538,7 @@ impl<S: Hash + Eq, F: Fn(&S, &pltl::Context) -> String + Clone> HoaAutomatonBuil
                             AcceptanceCondition::Fin(AcceptanceAtom::Positive(0))
                         }
                         AcceptanceName::None => AcceptanceCondition::Boolean(HoaBool(false)),
-                        _ => unreachable!(),
+                        _ => unreachable!("HoaAutomatonBuilder::build"),
                     },
                 ),
                 HeaderItem::AcceptanceName(self.accepting_name, self.accepting_infos),

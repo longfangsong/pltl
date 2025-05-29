@@ -21,11 +21,7 @@ pub fn transition(
     bed_next_state: &[LabeledPLTL],
     letter: BitSet32,
 ) -> (LabeledPLTL, LabeledPLTL) {
-    let after_function_first_part = after_function(
-        &state.0,
-        letter,
-        &ctx.local_after_cache,
-    );
+    let after_function_first_part = after_function(&state.0, letter, &ctx.local_after_cache);
     let second_part = if matches!(state.1, LabeledPLTL::Bottom) {
         let result: Vec<_> = bed_next_state
             .into_par_iter()
@@ -42,12 +38,7 @@ pub fn transition(
             .collect();
         LabeledPLTL::Logical(BinaryOp::Or, result).simplify()
     } else {
-        
-        after_function(
-            &state.1,
-            letter,
-            &ctx.local_after_cache,
-        )
+        after_function(&state.1, letter, &ctx.local_after_cache)
     };
     (after_function_first_part, second_part)
 }
@@ -120,12 +111,15 @@ pub fn dump(
             id += 1;
         }
         let letter_power_set = BitSet32::power_set_of_size(pltl_ctx.atoms.len());
-        let transitions = &weakening_condition_automata.transitions;
+        let wc_transitions = &weakening_condition_automata.transitions;
         let next_states: Vec<_> = letter_power_set
             .into_par_iter()
             .map(|letter| {
+                if weakening_condition_state.is_empty() {
+                    return (state_0.clone(), state_1.clone(), Vec::new());
+                }
                 let weakening_condition_next_state =
-                    &transitions[&weakening_condition_state][letter as usize];
+                    &wc_transitions[&weakening_condition_state][letter as usize];
                 let next_state = transition(
                     ctx,
                     m_set,
@@ -133,11 +127,15 @@ pub fn dump(
                     weakening_condition_next_state,
                     letter,
                 );
-                (
-                    next_state.0,
-                    next_state.1,
-                    weakening_condition_next_state.clone(),
-                )
+                // for T, T and F, F, we don't need to check the weakening condition
+                let weakening_condition_next_state = if (next_state.0 == LabeledPLTL::Bottom || next_state.0 == LabeledPLTL::Top)
+                    && next_state.0 == next_state.1
+                {
+                    Vec::new()
+                } else {
+                    weakening_condition_next_state.clone()
+                };
+                (next_state.0, next_state.1, weakening_condition_next_state)
             })
             .collect();
         for (next_state_0, next_state_1, weakening_condition_next_state) in &next_states {
@@ -147,7 +145,6 @@ pub fn dump(
                 weakening_condition_next_state.clone(),
             ));
         }
-        let start = Instant::now();
         result
             .transitions
             .insert((state_0, state_1, weakening_condition_state), next_states);
@@ -161,12 +158,12 @@ mod tests {
     use crate::{automata::Context, pltl::PLTL};
 
     #[test]
-    fn test_dump_aaa_hoa() {
+    fn test_dump_hoa() {
         rayon::ThreadPoolBuilder::new()
             .num_threads(1)
             .build_global()
             .unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string(r#"inR <-> (enterR & !( Y(!enterI) & Y(Y(!enterR)) & Y(Y(Y(!enterR))) ) & (!enterI S enterR))"#).unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(r#"Y(Y(Y p))"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let start = Instant::now();
         let ctx = Context::new(&ltl, &ltl_ctx);

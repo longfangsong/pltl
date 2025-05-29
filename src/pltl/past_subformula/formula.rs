@@ -46,7 +46,7 @@ impl PastSubformula {
                     let rhs_id = self.set_weaken(rhs, psf_id - 1);
                     self.set_weaken(lhs, rhs_id)
                 }
-                _ => unreachable!(),
+                _ => unreachable!("PastSubformula::set_weaken"),
             }
         } else {
             match root {

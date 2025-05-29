@@ -31,24 +31,14 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
                     &ctx.local_after_cache,
                 );
                 if result == LabeledPLTL::Bottom {
-                    // J_TIME.fetch_add(j_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
                     continue;
                 }
                 for c_i_item in (i as u32).iter() {
-                    // let c_i_start = Instant::now();
-                    // let start = Instant::now();
                     let wc = &ctx.label_context.past_subformulas[c_i_item as usize]
                         .clone()
                         .c_rewrite(j)
                         .weaken_condition();
-                    // WC_TIME.fetch_add(start.elapsed().as_nanos() as usize, Ordering::Relaxed);
-
-                    // let start = Instant::now();
                     cache_local_past(wc, &ctx.local_after_cache);
-                    // CACHE_LOCAL_PAST_TIME
-                    //     .fetch_add(start.elapsed().as_nanos() as usize, Ordering::Relaxed);
-
-                    // let start = Instant::now();
                     let after_wc = ctx
                         .local_after_cache
                         .read()
@@ -58,15 +48,11 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
                         .get(letter, i as u32)
                         .unwrap()
                         .clone();
-                    // AFTER_WC_TIME.fetch_add(start.elapsed().as_nanos() as usize, Ordering::Relaxed);
 
                     if after_wc == LabeledPLTL::Bottom {
-                        // CI_TIME.fetch_add(c_i_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
-                        // J_TIME.fetch_add(j_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
                         continue 'outer;
                     }
                     result = result & after_wc;
-                    // CI_TIME.fetch_add(c_i_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
                 }
                 result_i.push(result);
             }

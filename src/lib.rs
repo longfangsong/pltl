@@ -9,10 +9,9 @@ pub mod automata;
 pub mod pltl;
 pub mod utils;
 
-pub use wasm_bindgen_rayon::init_thread_pool;
-
 #[wasm_bindgen]
 pub fn to_dots(input: &str) -> JsValue {
+    console_error_panic_hook::set_once();
     let (pltl_formula, pltl_ctx) = PLTL::from_string(input).unwrap();
     let pltl_formula = pltl_formula
         .to_no_fgoh()

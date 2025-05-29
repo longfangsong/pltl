@@ -91,12 +91,11 @@
     <div id="results"></div>
 
     <script type="module">
-        import init, { to_dots, to_files, initThreadPool } from './pltl.js';
+        import init, { to_dots, to_files } from './pltl.js';
 
         async function run() {
             // Initialize WebAssembly module
             await init();
-            await initThreadPool(navigator.hardwareConcurrency);
             // Set up button click event
             document.getElementById('convert-btn').addEventListener('click', async () => {
                 const pltlInput = document.getElementById('pltl-input').value.trim();

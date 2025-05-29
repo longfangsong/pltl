@@ -78,7 +78,7 @@ impl UnaryOp {
             "Globally" => UnaryOp::Globally,
             "Historically" => UnaryOp::Historically,
             "WeakYesterday" => UnaryOp::WeakYesterday,
-            _ => unreachable!(),
+            _ => unreachable!("UnaryOp::from_name"),
         }
     }
 
@@ -158,7 +158,7 @@ impl BinaryOp {
             "Before" => BinaryOp::BackTo,
             "Release" => BinaryOp::Release,
             "WeakBefore" => BinaryOp::WeakBackTo,
-            _ => unreachable!(),
+            _ => unreachable!("BinaryOp::from_name"),
         }
     }
 

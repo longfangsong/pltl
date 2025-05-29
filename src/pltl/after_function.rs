@@ -74,7 +74,7 @@ pub fn local_after(f: &PLTL, letter: BitSet32, past_st: &Set<PLTL>) -> PLTL {
             _,
             _,
         ) => local_after(&f.weaken_condition(), letter, past_st),
-        _ => unreachable!(),
+        _ => unreachable!("local_after"),
     }
 }
 
