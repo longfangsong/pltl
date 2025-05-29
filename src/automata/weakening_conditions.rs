@@ -1,3 +1,4 @@
+
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -8,7 +9,10 @@ use crate::{
     automata::Context,
     pltl::{
         self,
-        labeled::{after_function::cache_local_past, LabeledPLTL},
+        labeled::{
+            after_function::{cache_local_past, local_after},
+            LabeledPLTL,
+        },
     },
     utils::{BitSet, BitSet32},
 };
@@ -18,27 +22,33 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
         .par_iter()
         .enumerate()
         .map(|(i, _)| {
-            let mut result_i = Vec::new();
+            let mut result_i = Vec::with_capacity(ctx.saturated_c_sets[i].len());
             'outer: for &j in &ctx.saturated_c_sets[i] {
-                cache_local_past(&current[j as usize], &ctx.local_after_cache);
-                let mut result = ctx
-                    .local_after_cache
-                    .read()
-                    .unwrap()
-                    .get(&current[j as usize])
-                    .unwrap()
-                    .get(letter, i as u32)
-                    .unwrap()
-                    .clone();
+                let mut result = local_after(
+                    &current[j as usize],
+                    letter,
+                    i as u32,
+                    &ctx.local_after_cache,
+                );
                 if result == LabeledPLTL::Bottom {
+                    // J_TIME.fetch_add(j_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
                     continue;
                 }
                 for c_i_item in (i as u32).iter() {
+                    // let c_i_start = Instant::now();
+                    // let start = Instant::now();
                     let wc = &ctx.label_context.past_subformulas[c_i_item as usize]
                         .clone()
                         .c_rewrite(j)
                         .weaken_condition();
+                    // WC_TIME.fetch_add(start.elapsed().as_nanos() as usize, Ordering::Relaxed);
+
+                    // let start = Instant::now();
                     cache_local_past(wc, &ctx.local_after_cache);
+                    // CACHE_LOCAL_PAST_TIME
+                    //     .fetch_add(start.elapsed().as_nanos() as usize, Ordering::Relaxed);
+
+                    // let start = Instant::now();
                     let after_wc = ctx
                         .local_after_cache
                         .read()
@@ -48,14 +58,18 @@ pub fn transition(ctx: &Context, current: &[LabeledPLTL], letter: BitSet32) -> V
                         .get(letter, i as u32)
                         .unwrap()
                         .clone();
+                    // AFTER_WC_TIME.fetch_add(start.elapsed().as_nanos() as usize, Ordering::Relaxed);
+
                     if after_wc == LabeledPLTL::Bottom {
+                        // CI_TIME.fetch_add(c_i_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
+                        // J_TIME.fetch_add(j_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
                         continue 'outer;
                     }
                     result = result & after_wc;
+                    // CI_TIME.fetch_add(c_i_start.elapsed().as_nanos() as usize, Ordering::Relaxed);
                 }
                 result_i.push(result);
             }
-
             result_i
                 .into_iter()
                 .reduce(|acc, item| acc | item)
@@ -132,33 +146,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_dump() {
-        let (ltl, ltl_ctx) = PLTL::from_string("F(r & (r S p))").unwrap();
+    fn test_dump_bbb() {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(r#"inR <-> (enterR & !( Y(!enterI) & Y(Y(!enterR)) & Y(Y(Y(!enterR))) ) & (!enterI S enterR))"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl, &ltl_ctx);
         println!("ctx: {ctx}");
         let dump = dump(&ctx, &ltl_ctx);
-        for (state, transitions) in &dump.transitions {
-            println!(
-                "{}",
-                state
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            for (character, transition) in transitions.iter().enumerate() {
-                println!(
-                    "  0b{:b} -> {}",
-                    character,
-                    transition
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
+        // for (state, transitions) in &dump.transitions {
+        //     println!(
+        //         "{}",
+        //         state
+        //             .iter()
+        //             .map(|x| x.to_string())
+        //             .collect::<Vec<_>>()
+        //             .join(", ")
+        //     );
+        //     for (character, transition) in transitions.iter().enumerate() {
+        //         println!(
+        //             "  0b{:b} -> {}",
+        //             character,
+        //             transition
+        //                 .iter()
+        //                 .map(|x| x.to_string())
+        //                 .collect::<Vec<_>>()
+        //                 .join(", ")
+        //         );
+        //     }
+        // }
     }
 }

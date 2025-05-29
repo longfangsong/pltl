@@ -1,0 +1,7 @@
+G(Y(p0))
+G(Y(p0)) & G(Y(p1))
+G(Y(p0)) & G(Y(p1)) & G(Y(p2))
+G(Y(p0)) & G(Y(p1)) & G(Y(p2)) & G(Y(p3))
+G(Y(p0)) & G(Y(p1)) & G(Y(p2)) & G(Y(p3)) & G(Y(p4))
+G(Y(p0)) & G(Y(p1)) & G(Y(p2)) & G(Y(p3)) & G(Y(p4)) & G(Y(p5))
+G(Y(p0)) & G(Y(p1)) & G(Y(p2)) & G(Y(p3)) & G(Y(p4)) & G(Y(p5)) & G(Y(p6))

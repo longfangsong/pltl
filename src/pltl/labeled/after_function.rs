@@ -38,13 +38,10 @@ impl CacheItem {
     }
 }
 
-pub fn cache_local_past(
+fn do_cache_local_past(
     ltl: &LabeledPLTL,
     result: &RwLock<Map<LabeledPLTL, CacheItem>>
 ) {
-    if result.read().unwrap().contains_key(ltl) {
-        return;
-    }
     match ltl {
         LabeledPLTL::Top | LabeledPLTL::Bottom => {
             let mut cache = Map::default();
@@ -89,49 +86,29 @@ pub fn cache_local_past(
                 },
             );
         }
-        LabeledPLTL::Yesterday { id, weak, content } => {
+        LabeledPLTL::Yesterday { weak, content, .. } => {
             cache_local_past(content, result);
-            let content_entry = result.read().unwrap().get(content).unwrap().clone();
             let mut cache = Map::default();
             cache.insert(
-                (content_entry.atom_mask, content_entry.past_st_mask),
+                (BitSet32::default(), BitSet32::default()),
                 if *weak {
                     LabeledPLTL::Top
                 } else {
                     LabeledPLTL::Bottom
                 },
             );
-            let mut item = CacheItem {
-                atom_mask: content_entry.atom_mask,
-                past_st_mask: content_entry.past_st_mask | (1u32 << id),
+            result.write().unwrap().insert(ltl.clone(), CacheItem {
+                atom_mask: BitSet32::default(),
+                past_st_mask: BitSet32::default(),
                 cache,
-            };
-            for ((letter, past_st), result) in content_entry.cache.iter() {
-                item.cache.insert(
-                    (*letter, *past_st | (1u32 << id)),
-                    if *weak {
-                        LabeledPLTL::Top
-                    } else {
-                        LabeledPLTL::Bottom
-                    },
-                );
-                item.cache.insert(
-                    (*letter, *past_st),
-                    if *weak {
-                        LabeledPLTL::Top
-                    } else {
-                        LabeledPLTL::Bottom
-                    },
-                );
-            }
-            result.write().unwrap().insert(ltl.clone(), item);
+            });
         }
         LabeledPLTL::Next(content) => {
             cache_local_past(content, result);
             let content_entry = result.read().unwrap().get(content).unwrap().clone();
             let mut cache = Map::default();
             for ((letter, past_st), _) in content_entry.cache.iter() {
-                let result = do_local_post_update(&content, *letter, *past_st, result);
+                let result = do_local_post_update(content, *letter, *past_st, result);
                 cache.insert((*letter, *past_st), result);
             }
             result.write().unwrap().insert(
@@ -193,10 +170,12 @@ pub fn cache_local_past(
             result.write().unwrap().insert(ltl.clone(), result_item);
         }
         LabeledPLTL::Until { lhs, rhs, .. } => {
-            rayon::scope(|s| {
-                s.spawn(|_| cache_local_past(lhs, result));
-                s.spawn(|_| cache_local_past(rhs, result));
-            });
+            // rayon::scope(|s| {
+            //     s.spawn(|_| cache_local_past(lhs, result));
+            //     s.spawn(|_| cache_local_past(rhs, result));
+            // });
+            cache_local_past(lhs, result);
+            cache_local_past(rhs, result);
             let read = result.read().unwrap();
             let lhs_entry = read.get(lhs).unwrap();
             let rhs_entry = read.get(rhs).unwrap();
@@ -234,10 +213,12 @@ pub fn cache_local_past(
             result.write().unwrap().insert(ltl.clone(), result_item);
         }
         LabeledPLTL::Release { lhs, rhs, .. } => {
-            rayon::scope(|s| {
-                s.spawn(|_| cache_local_past(lhs, result));
-                s.spawn(|_| cache_local_past(rhs, result));
-            });
+            // rayon::scope(|s| {
+            //     s.spawn(|_| cache_local_past(lhs, result));
+            //     s.spawn(|_| cache_local_past(rhs, result));
+            // });
+            cache_local_past(lhs, result);
+            cache_local_past(rhs, result);
             let read = result.read().unwrap();
             let lhs_entry = read.get(lhs).unwrap();
             let rhs_entry = read.get(rhs).unwrap();
@@ -274,10 +255,12 @@ pub fn cache_local_past(
             result.write().unwrap().insert(ltl.clone(), result_item);
         }
         LabeledPLTL::BinaryTemporal { id, lhs, rhs, .. } => {
-            rayon::scope(|s| {
-                s.spawn(|_| cache_local_past(lhs, result));
-                s.spawn(|_| cache_local_past(rhs, result));
-            });
+            // rayon::scope(|s| {
+            //     s.spawn(|_| cache_local_past(lhs, result));
+            //     s.spawn(|_| cache_local_past(rhs, result));
+            // });
+            cache_local_past(lhs, result);
+            cache_local_past(rhs, result);
             // this one does not need to be parallel with the above two
             // since wc is either one of, or a combination of lhs and rhs
             let wc = ltl.weaken_condition();
@@ -294,6 +277,57 @@ pub fn cache_local_past(
                     .insert((*letter, *past_st | (1u32 << id)), result.clone());
             }
             result.write().unwrap().insert(ltl.clone(), result_item);
+        }
+    }
+}
+
+pub fn cache_local_past(
+    ltl: &LabeledPLTL,
+    result: &RwLock<Map<LabeledPLTL, CacheItem>>
+) {
+    if result.read().unwrap().contains_key(ltl) {
+        return;
+    }
+    do_cache_local_past(ltl, result);
+}
+
+pub fn local_after(
+    f: &LabeledPLTL,
+    letter: BitSet32,
+    past_st: BitSet32,
+    cache: &RwLock<Map<LabeledPLTL, CacheItem>>,
+) -> LabeledPLTL {
+    match f {
+        LabeledPLTL::Top => LabeledPLTL::Top,
+        LabeledPLTL::Bottom => LabeledPLTL::Bottom,
+        LabeledPLTL::Atom(atom) => {
+            if letter.contains(*atom) {
+                LabeledPLTL::Top
+            } else {
+                LabeledPLTL::Bottom
+            }
+        }
+        LabeledPLTL::Not(atom) => {
+            if letter.contains(*atom) {
+                LabeledPLTL::Bottom
+            } else {
+                LabeledPLTL::Top
+            }
+        }
+        LabeledPLTL::Yesterday { weak, .. } => {
+            if *weak {
+                LabeledPLTL::Top
+            } else {
+                LabeledPLTL::Bottom
+            }
+        }
+        _ => {
+            if let Some(item) = cache.read().unwrap().get(f) {
+                item.get(letter, past_st).unwrap().clone()
+            } else {
+                do_cache_local_past(f, cache);
+                local_after(f, letter, past_st, cache)
+            }
         }
     }
 }
@@ -422,6 +456,9 @@ pub fn after_function(
     letter: u32,
     cache: &RwLock<Map<LabeledPLTL, CacheItem>>,
 ) -> LabeledPLTL {
+    if matches!(labeled_pltl, LabeledPLTL::Top | LabeledPLTL::Bottom) {
+        return labeled_pltl.clone();
+    }
     cache_local_past(labeled_pltl, cache);
     let read = cache.read().unwrap();
     let cache_item = read.get(labeled_pltl).unwrap();
@@ -481,7 +518,7 @@ mod tests {
     #[test]
     fn test_cache() {
         let (ltl, ltl_ctx) = PLTL::from_string("F ( r & (r S p))").unwrap();
-        println!("{}", ltl_ctx);
+        println!("{ltl_ctx}");
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let (labeled_ltl, labeled_ctx) = LabeledPLTL::new(&ltl);
         let cache = RwLock::new(Map::default());
@@ -489,7 +526,7 @@ mod tests {
         for (ltl, item) in cache.read().unwrap().iter() {
             // println!("+ ltl: {ltl} {}", item.cache.len());
             // if item.cache.len() == 8 {
-            println!("+{}", ltl);
+            println!("+{ltl}");
             for ((letter, past_st), result) in item.cache.iter() {
                 println!("  (0b{letter:b}, 0b{past_st:b}) -> {result}");
             }

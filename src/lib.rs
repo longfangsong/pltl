@@ -9,6 +9,8 @@ pub mod automata;
 pub mod pltl;
 pub mod utils;
 
+pub use wasm_bindgen_rayon::init_thread_pool;
+
 #[wasm_bindgen]
 pub fn to_dots(input: &str) -> JsValue {
     let (pltl_formula, pltl_ctx) = PLTL::from_string(input).unwrap();

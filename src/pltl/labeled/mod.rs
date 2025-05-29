@@ -331,6 +331,7 @@ impl LabeledPLTL {
                     .past_subformulas
                     .iter()
                     .find_position(|&x| {
+                        // println!("pltl: {pltl}, x: {x}, lhs_result: {lhs_result}, rhs_result: {rhs_result}, lhs: {lhs}, rhs: {rhs}");
                         if let LabeledPLTL::BinaryTemporal {
                             op: x_op,
                             weak,
@@ -338,7 +339,7 @@ impl LabeledPLTL {
                             rhs,
                             ..
                         } = x
-                            && op == x_op
+                            && op.strengthen() == x_op.strengthen()
                             && *weak == is_weak
                         {
                             &lhs_result == lhs.as_ref() && &rhs_result == rhs.as_ref()
@@ -429,6 +430,289 @@ impl LabeledPLTL {
                 let rhs_str = rhs.format_with_parentheses(pltl_ctx);
                 format!("{} {} {}", lhs_str, op.with_weaken_state(*weak), rhs_str)
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum StructureDiff {
+    Different,
+    TotallySame,
+    StructureSame(Vec<(u32, u32)>),
+}
+
+impl LabeledPLTL {
+    pub fn same_structure(&self, other: &Self) -> bool {
+        match (self, other) {
+            (LabeledPLTL::Top, LabeledPLTL::Top) => true,
+            (LabeledPLTL::Bottom, LabeledPLTL::Bottom) => true,
+            (LabeledPLTL::Atom(label), LabeledPLTL::Atom(other_label)) => label == other_label,
+            (LabeledPLTL::Not(label), LabeledPLTL::Not(other_label)) => label == other_label,
+            (
+                LabeledPLTL::Yesterday { content, .. },
+                LabeledPLTL::Yesterday {
+                    content: other_content,
+                    ..
+                },
+            ) => content.same_structure(other_content),
+            (LabeledPLTL::Next(content), LabeledPLTL::Next(other_content)) => {
+                content.same_structure(other_content)
+            }
+            (LabeledPLTL::Logical(op, content), LabeledPLTL::Logical(other_op, other_content)) => {
+                op == other_op
+                    && content
+                        .iter()
+                        .zip(other_content.iter())
+                        .all(|(x, y)| x.same_structure(y))
+            }
+            (
+                LabeledPLTL::Until { lhs, rhs, .. },
+                LabeledPLTL::Until {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    ..
+                },
+            ) => lhs.same_structure(other_lhs) && rhs.same_structure(other_rhs),
+            (
+                LabeledPLTL::Release { lhs, rhs, .. },
+                LabeledPLTL::Release {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    ..
+                },
+            ) => lhs.same_structure(other_lhs) && rhs.same_structure(other_rhs),
+            (
+                LabeledPLTL::BinaryTemporal { lhs, rhs, .. },
+                LabeledPLTL::BinaryTemporal {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    ..
+                },
+            ) => lhs.same_structure(other_lhs) && rhs.same_structure(other_rhs),
+            _ => false,
+        }
+    }
+
+    pub fn structure_diff(&self, other: &Self) -> StructureDiff {
+        match (self, other) {
+            (LabeledPLTL::Top, LabeledPLTL::Top) => StructureDiff::TotallySame,
+            (LabeledPLTL::Bottom, LabeledPLTL::Bottom) => StructureDiff::TotallySame,
+            (LabeledPLTL::Atom(label), LabeledPLTL::Atom(other_label)) => {
+                if label == other_label {
+                    StructureDiff::TotallySame
+                } else {
+                    StructureDiff::Different
+                }
+            }
+            (LabeledPLTL::Not(label), LabeledPLTL::Not(other_label)) => {
+                if label == other_label {
+                    StructureDiff::TotallySame
+                } else {
+                    StructureDiff::Different
+                }
+            }
+            (
+                LabeledPLTL::Yesterday {
+                    id, weak, content, ..
+                },
+                LabeledPLTL::Yesterday {
+                    id: other_id,
+                    content: other_content,
+                    weak: other_weak,
+                    ..
+                },
+            ) => {
+                if *id == *other_id {
+                    StructureDiff::TotallySame
+                } else {
+                    match content.structure_diff(other_content) {
+                        StructureDiff::Different => StructureDiff::Different,
+                        StructureDiff::TotallySame => {
+                            if *weak == *other_weak {
+                                StructureDiff::TotallySame
+                            } else {
+                                StructureDiff::StructureSame(vec![(*id, *other_id)])
+                            }
+                        }
+                        StructureDiff::StructureSame(mut items) => {
+                            if *weak != *other_weak {
+                                items.push((*id, *other_id));
+                            }
+                            StructureDiff::StructureSame(items)
+                        }
+                    }
+                }
+            }
+            (LabeledPLTL::Next(content), LabeledPLTL::Next(other_content)) => {
+                content.structure_diff(other_content)
+            }
+            (LabeledPLTL::Logical(op, content), LabeledPLTL::Logical(other_op, other_content)) => {
+                if op == other_op && content.len() == other_content.len() {
+                    let mut result = vec![];
+                    for (item, other_item) in content.iter().zip(other_content.iter()) {
+                        match item.structure_diff(other_item) {
+                            StructureDiff::Different => return StructureDiff::Different,
+                            StructureDiff::TotallySame => (),
+                            StructureDiff::StructureSame(items) => {
+                                // currently we keep the first structure same
+                                result.extend(items);
+                                break;
+                            }
+                        }
+                    }
+                    if result.is_empty() {
+                        StructureDiff::TotallySame
+                    } else {
+                        StructureDiff::StructureSame(result)
+                    }
+                } else {
+                    StructureDiff::Different
+                }
+            }
+            (
+                LabeledPLTL::Until {
+                    lhs,
+                    rhs,
+                    weak: lhs_weak,
+                },
+                LabeledPLTL::Until {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    weak: rhs_weak,
+                },
+            )
+            | (
+                LabeledPLTL::Release {
+                    lhs,
+                    rhs,
+                    weak: lhs_weak,
+                },
+                LabeledPLTL::Release {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    weak: rhs_weak,
+                },
+            ) if lhs_weak == rhs_weak => {
+                match (lhs.structure_diff(other_lhs), rhs.structure_diff(other_rhs)) {
+                    (StructureDiff::Different, _) | (_, StructureDiff::Different) => {
+                        StructureDiff::Different
+                    }
+                    (StructureDiff::TotallySame, StructureDiff::TotallySame) => {
+                        StructureDiff::TotallySame
+                    }
+                    (StructureDiff::TotallySame, StructureDiff::StructureSame(items))
+                    | (StructureDiff::StructureSame(items), StructureDiff::TotallySame) => {
+                        StructureDiff::StructureSame(items)
+                    }
+                    (
+                        StructureDiff::StructureSame(mut items),
+                        StructureDiff::StructureSame(other_items),
+                    ) => {
+                        items.extend(other_items);
+                        StructureDiff::StructureSame(items)
+                    }
+                }
+            }
+            (
+                LabeledPLTL::BinaryTemporal {
+                    op,
+                    lhs,
+                    rhs,
+                    id,
+                    weak,
+                },
+                LabeledPLTL::BinaryTemporal {
+                    op: other_op,
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    id: other_id,
+                    weak: other_weak,
+                },
+            ) if op.strengthen() == other_op.strengthen() => {
+                if *id == *other_id {
+                    StructureDiff::TotallySame
+                } else {
+                    match (lhs.structure_diff(other_lhs), rhs.structure_diff(other_rhs)) {
+                        (StructureDiff::Different, _) | (_, StructureDiff::Different) => {
+                            StructureDiff::Different
+                        }
+                        (StructureDiff::TotallySame, StructureDiff::TotallySame) => {
+                            if *weak == *other_weak {
+                                StructureDiff::TotallySame
+                            } else {
+                                StructureDiff::StructureSame(vec![(*id, *other_id)])
+                            }
+                        }
+                        (StructureDiff::TotallySame, StructureDiff::StructureSame(mut items))
+                        | (StructureDiff::StructureSame(mut items), StructureDiff::TotallySame) => {
+                            if *weak != *other_weak {
+                                items.push((*id, *other_id));
+                            }
+                            StructureDiff::StructureSame(items)
+                        }
+                        (
+                            StructureDiff::StructureSame(mut items),
+                            StructureDiff::StructureSame(other_items),
+                        ) => {
+                            items.extend(other_items);
+                            if *weak != *other_weak {
+                                items.push((*id, *other_id));
+                            }
+                            StructureDiff::StructureSame(items)
+                        }
+                    }
+                }
+            }
+            _ => StructureDiff::Different,
+        }
+    }
+
+    // equal without considering the id
+    pub fn content_equal(&self, other: &Self) -> bool {
+        match (self, other) {
+            (LabeledPLTL::Top, LabeledPLTL::Top) => true,
+            (LabeledPLTL::Bottom, LabeledPLTL::Bottom) => true,
+            (LabeledPLTL::Atom(label), LabeledPLTL::Atom(other_label)) => label == other_label,
+            (LabeledPLTL::Not(label), LabeledPLTL::Not(other_label)) => label == other_label,
+            (LabeledPLTL::Yesterday { weak, content, .. }, LabeledPLTL::Yesterday { weak: other_weak, content: other_content, .. }) => {
+                *weak == *other_weak && content.content_equal(other_content)
+            }
+            (LabeledPLTL::Next(content), LabeledPLTL::Next(other_content)) => {
+                content.content_equal(other_content)
+            }
+            (LabeledPLTL::Logical(op, content), LabeledPLTL::Logical(other_op, other_content)) => {
+                op == other_op && content.iter().zip(other_content.iter()).all(|(x, y)| x.content_equal(y))
+            }
+            (
+                LabeledPLTL::Until { lhs, rhs, weak: self_weak },
+                LabeledPLTL::Until {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    weak: other_weak,
+                },
+            ) => self_weak == other_weak && lhs.content_equal(other_lhs) && rhs.content_equal(other_rhs),
+            (
+                LabeledPLTL::Release { lhs, rhs, weak: self_weak },
+                LabeledPLTL::Release {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    weak: other_weak,
+                },
+            ) => self_weak == other_weak && lhs.content_equal(other_lhs) && rhs.content_equal(other_rhs),
+            (
+                LabeledPLTL::BinaryTemporal { lhs, rhs, weak: self_weak, op: self_op, .. },
+                LabeledPLTL::BinaryTemporal {
+                    lhs: other_lhs,
+                    rhs: other_rhs,
+                    weak: other_weak,
+                    op: other_op,
+                    ..
+                },
+            ) => self_weak == other_weak
+                && self_op.strengthen() == other_op.strengthen()
+                && lhs.content_equal(other_lhs)
+                && rhs.content_equal(other_rhs),
+            _ => false,
         }
     }
 }

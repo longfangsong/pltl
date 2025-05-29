@@ -59,12 +59,14 @@ def main():
         
         # Run make in the output directory
         print("Running make in the output directory")
-        make_time, _ = run_command(["make"], cwd=generated_dir)
+        make_time, _ = run_command(["make", "-j12"], cwd=generated_dir)
         print(f"make execution time: {make_time:.2f} seconds")
 
         # Print total time
         total_time = pltl2dra_time + make_time
         print(f"Total execution time: {total_time:.2f} seconds")
+
+        
 
 if __name__ == "__main__":
     main()

@@ -42,6 +42,7 @@ pub fn transition(
             .collect();
         LabeledPLTL::Logical(BinaryOp::Or, result).simplify()
     } else {
+        
         after_function(
             &state.1,
             letter,
@@ -146,6 +147,7 @@ pub fn dump(
                 weakening_condition_next_state.clone(),
             ));
         }
+        let start = Instant::now();
         result
             .transitions
             .insert((state_0, state_1, weakening_condition_state), next_states);
@@ -155,18 +157,25 @@ pub fn dump(
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::{automata::Context, pltl::PLTL};
 
     #[test]
     fn test_dump_aaa_hoa() {
-        let (ltl, ltl_ctx) = PLTL::from_string("F ( r & (r S p))").unwrap();
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(r#"inR <-> (enterR & !( Y(!enterI) & Y(Y(!enterR)) & Y(Y(Y(!enterR))) ) & (!enterI S enterR))"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
-        println!("ltl: {ltl}");
+        let start = Instant::now();
         let ctx = Context::new(&ltl, &ltl_ctx);
+        let ctx_time = start.elapsed().as_nanos() as usize;
+        println!("ctx_time: {}ms", ctx_time / (1000 * 1000));
         println!("ctx: {ctx}");
         let weakening_condition_automata = weakening_conditions::dump(&ctx, &ltl_ctx);
+        let wc_time = start.elapsed().as_nanos() as usize;
+        println!("wc_time: {}ms", wc_time / (1000 * 1000));
         let init_state = initial_state(&ctx, 0b0);
         println!(
             "init: {}",
@@ -184,67 +193,13 @@ mod tests {
             println!("m_set: 0b{:b}, dump: {}", m, dump.transitions.len());
         }
         for (c_set, cache) in ctx.m_set_under_c_rewrite_cache.iter().enumerate() {
-            println!("m_set: 0b{:b}", c_set);
+            println!("m_set: 0b{c_set:b}");
             for (item, map) in cache.iter() {
-                println!("  c_set: 0b{:b}", item);
+                println!("  c_set: 0b{item:b}");
                 for kv in map.iter() {
                     println!("    {} -> {}", kv.key(), kv.value());
                 }
             }
         }
-        // println!("dump: {}", dump.transitions.len());
-        // println!("dump: {}", dump.transitions.len());
-        // println!("time: {}s", start.elapsed().as_secs_f32());
-        // println!("transition time: {}s", TRANSITION_TIME.load(Ordering::Relaxed) as f32 / 1e9);
-        // println!("af time: {}s", AF_TIME.load(Ordering::Relaxed) as f32 / 1e9);
-        // println!("v write count: {}", V_WRITE_COUNT.load(Ordering::Relaxed));
-        // println!(
-        //     "v write time: {}s",
-        //     V_REWRITE_CPU_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!("cached count: {}", CACHED_COUNT.load(Ordering::Relaxed));
-        // println!(
-        //     "cached time: {}s",
-        //     CACHED_CPU_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!(
-        //     "get time: {}s",
-        //     GET_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!(
-        //     "af1 time: {}s",
-        //     AF1_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!(
-        //     "af2 time: {}s",
-        //     AF2_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-
-        // println!(
-        //     "af_cache read time: {}s",
-        //     CACHE_READ_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!(
-        //     "af_cache write time: {}s",
-        //     CACHE_WRITE_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!(
-        //     "af_calculation time: {}s",
-        //     CALCULATION_TIME.load(Ordering::Relaxed) as f32 / 1e9
-        // );
-        // println!("first part in second time: {}s", FIRST_PART_IN_SECOND_TIME.load(Ordering::Relaxed) as f32 / 1e9);
-        // println!("cached v rewrite time: {}s", CACHED_V_REWRITE_TIME.load(Ordering::Relaxed) as f32 / 1e9);
-        // println!("clone time: {}s", CLONE_TIME.load(Ordering::Relaxed) as f32 / 1e9);
-        // println!("{}", dump.len());
-        // for (state, transitions) in &dump.transitions {
-        // println!("{}", format_state(state, &ltl_ctx));
-        // for (character, transition_to) in transitions.iter().enumerate() {
-        // println!(
-        //     "  0b{:b} -> {}",
-        //     character,
-        //     format_state(transition_to, &ltl_ctx)
-        // );
-        //     }
-        // }
     }
 }

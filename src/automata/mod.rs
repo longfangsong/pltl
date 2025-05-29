@@ -1,7 +1,7 @@
 use crate::{
     pltl::{
         self,
-        labeled::{self, after_function::CacheItem, LabeledPLTL},
+        labeled::{self, after_function::CacheItem, LabeledPLTL, StructureDiff},
         PLTL,
     },
     utils::{character_to_label_expression, powerset_vec, BitSet, BitSet32, ConcurrentMap, Map},
@@ -20,7 +20,12 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::{collections::HashMap, fmt, hash::Hash, mem, sync::RwLock, time::Instant};
+use std::{
+    fmt,
+    hash::Hash,
+    mem,
+    sync::RwLock,
+};
 
 mod guarantee;
 pub mod hoa;
@@ -38,25 +43,25 @@ pub struct MSetUnderCCache {
 
 impl MSetUnderCCache {
     fn append_one(&self, other: &MSetUnderCCache) -> MSetUnderCCache {
-        debug_assert_eq!(other.mask.len(), 1);
-        debug_assert_eq!(other.mask & self.mask, 0b0);
         let mask = self.mask | other.mask;
         let mut cache = Map::default();
         let other_u_item = other.mask.trailing_zeros();
-        // let other_entry = &current_result[other_u_item as usize];
         for (c_set, m_set) in self.cache.iter() {
+            // fixme: should consider every subset of other.mask
             // other is 0b0
             let mut new_result = m_set.clone();
             let other_content = other.get(0b0).unwrap();
             new_result.extend(other_content.iter().cloned());
-            let new_c_set: u32 = *c_set;
-            cache.insert(new_c_set, new_result);
-            // other is mask
-            let mut new_result = m_set.clone();
-            let other_content = other.get(other.mask).unwrap();
-            new_result.extend(other_content.iter().cloned());
-            let new_c_set: u32 = *c_set | (1 << other_u_item);
-            cache.insert(new_c_set, new_result);
+            cache.insert(*c_set, new_result);
+
+            if other.mask != 0b0 {
+                // other is mask
+                let mut new_result = m_set.clone();
+                let other_content = other.get(other.mask).unwrap();
+                new_result.extend(other_content.iter().cloned());
+                let new_c_set: u32 = *c_set | (1 << other_u_item);
+                cache.insert(new_c_set, new_result);
+            }
         }
         MSetUnderCCache { mask, cache }
     }
@@ -82,12 +87,19 @@ impl MSetUnderCCache {
                 .collect();
             result[1 << u_item_id] = MSetUnderCCache { mask, cache };
         }
+
+        // generating power set of calculated u_item set
+        // initial sets are "atom" sets which contains only one u_item
         let mut current_considering = (0..u_items.len()).map(|i| 1u32 << i).collect::<Vec<_>>();
+
+        // for sets with length sub_part_length
+        // it's generated from "appending" "atom" set into sets with length sub_part_length-1
         for _sub_part_length in 1..u_items.len() as u32 {
             let mut new_considering = Vec::with_capacity(1 << u_items.len());
             for from in current_considering.iter() {
                 let start_index = 32 - from.leading_zeros();
                 for to_append_index in start_index..(u_items.len() as u32) {
+                    // merge u_item[from] and u_item[1 << to_append_index]
                     new_considering.push(from | (1u32 << to_append_index));
                     result[(from | (1u32 << to_append_index)) as usize] = result[*from as usize]
                         .append_one(&result[(1u32 << to_append_index) as usize]);
@@ -120,53 +132,163 @@ pub struct Context {
     pub v_rewrite_cache: Vec<ConcurrentMap<LabeledPLTL, LabeledPLTL>>,
     pub u_rewrite_cache: Vec<ConcurrentMap<LabeledPLTL, LabeledPLTL>>,
     // m_set -> c_set_with_mask -> f -> f[M<c_i>]
-    pub m_set_under_c_rewrite_cache:
-        Vec<Map<BitSet32, ConcurrentMap<LabeledPLTL, LabeledPLTL>>>,
+    pub m_set_under_c_rewrite_cache: Vec<Map<BitSet32, ConcurrentMap<LabeledPLTL, LabeledPLTL>>>,
 
     pub local_after_cache: RwLock<Map<LabeledPLTL, CacheItem>>,
 }
 
 impl Context {
     fn compute_saturated_c_set(label_context: &labeled::Context) -> Vec<Vec<u32>> {
-        (0..(1 << label_context.past_subformulas.len()))
-            .into_par_iter()
-            .map(|ci| {
-                let mut result = Vec::new();
-                'check_cj: for cj in 0..(1 << label_context.past_subformulas.len()) {
-                    'check_psf: for (psf0_id, psf0) in
-                        label_context.past_subformulas.iter().enumerate()
-                    {
-                        for psf1 in &label_context.past_subformulas[psf0_id + 1..] {
-                            let psf0_rewrite_cj = psf0.clone();
-                            let psf0_rewrite_cj = psf0_rewrite_cj.c_rewrite(cj);
-                            let psf0_rewrite_cj = psf0_rewrite_cj.simplify();
-                            let psf1_rewrite_cj = psf1.clone();
-                            let psf1_rewrite_cj = psf1_rewrite_cj.c_rewrite(cj);
-                            let psf1_rewrite_cj = psf1_rewrite_cj.simplify();
-                            if psf0_rewrite_cj == psf1_rewrite_cj {
-                                continue 'check_psf;
-                            }
+        let mut same_shape_pairs = (0..label_context.past_subformulas.len())
+            .map(|i| 1 << i)
+            .collect_vec();
+        for (i, psf) in label_context.past_subformulas.iter().enumerate() {
+            for (j, other_psf) in label_context
+                .past_subformulas
+                .iter()
+                .enumerate()
+                .skip(i + 1)
+            {
+                if let StructureDiff::StructureSame(_) = LabeledPLTL::structure_diff(psf, other_psf)
+                {
+                    same_shape_pairs[i].set_bit(j as u32);
+                    same_shape_pairs[j].set_bit(i as u32);
+                }
+            }
+        }
+        same_shape_pairs.retain(|p| p.len() > 1);
+        same_shape_pairs.sort();
+        same_shape_pairs.dedup();
 
-                            let psf0_rewrite_ci = psf0.clone();
-                            let psf0_rewrite_ci = psf0_rewrite_ci.c_rewrite(ci);
-                            let psf0_rewrite_ci = psf0_rewrite_ci.simplify();
-                            let psf1_rewrite_ci = psf1.clone();
-                            let psf1_rewrite_ci = psf1_rewrite_ci.c_rewrite(ci);
-                            let psf1_rewrite_ci = psf1_rewrite_ci.simplify();
-                            if psf0_rewrite_ci == psf1_rewrite_ci {
-                                continue 'check_cj;
+        let k = (1 << label_context.past_subformulas.len()) as u32;
+        let mut cache = (0..k)
+            .map(|_| (0..k).map(|_| LabeledPLTL::Bottom).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        let mut result = Vec::with_capacity(k as usize);
+        for ci in 0..k {
+            let mut sub_result = Vec::with_capacity(k as usize);
+            'check_cj: for cj in 0..k {
+                'check_p: for p in same_shape_pairs.iter() {
+                    // seperate p into items in cj and those not in cj
+                    let p_in_cj_parts = p & cj;
+                    // if there is exactly one item (call it phi) in p in cj
+                    // then phi<cj> is (phi)_w, but the rest same shape formulas
+                    // would be (phi')_s, which can never be equal to phi<cj>
+                    if p_in_cj_parts.count_ones() == 1 {
+                        continue;
+                    }
+                    // similarily, if there is exactly one item (call it phi) in p not in cj
+                    // then phi<cj> is (phi)_s, but the rest same shape formulas
+                    // would be (phi')_w, which can never be equal to phi<cj>
+                    let p_not_in_cj_parts = p & (!cj);
+                    if p_not_in_cj_parts.count_ones() == 1 {
+                        continue;
+                    }
+                    // for those weakened
+                    if p_in_cj_parts.count_ones() > 1 {
+                        for xi_0 in p_in_cj_parts.trailing_zeros()
+                            ..32 - p_in_cj_parts.leading_zeros()
+                        {
+                            if !p_in_cj_parts.get(xi_0) {
+                                continue;
+                            }
+                            'check_xi_1: for xi_1 in xi_0 + 1..32 - p_in_cj_parts.leading_zeros() {
+                                if !p_in_cj_parts.get(xi_1) {
+                                    continue;
+                                }
+                                let xi_0_item =
+                                    label_context.past_subformulas[xi_0 as usize].clone();
+                                let xi_1_item =
+                                    label_context.past_subformulas[xi_1 as usize].clone();
+                                if cache[xi_0 as usize][cj as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_0 as usize][cj as usize] =
+                                        xi_0_item.clone().c_rewrite(cj);
+                                }
+                                if cache[xi_1 as usize][cj as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_1 as usize][cj as usize] =
+                                        xi_1_item.clone().c_rewrite(cj);
+                                }
+                                if !LabeledPLTL::content_equal(
+                                    &cache[xi_0 as usize][cj as usize],
+                                    &cache[xi_1 as usize][cj as usize],
+                                ) {
+                                    continue 'check_xi_1;
+                                }
+                                if cache[xi_0 as usize][ci as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_0 as usize][ci as usize] =
+                                        xi_0_item.clone().c_rewrite(ci);
+                                }
+                                if cache[xi_1 as usize][ci as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_1 as usize][ci as usize] =
+                                        xi_1_item.clone().c_rewrite(ci);
+                                }
+                                if !LabeledPLTL::content_equal(
+                                    &cache[xi_0 as usize][ci as usize],
+                                    &cache[xi_1 as usize][ci as usize],
+                                ) {
+                                    continue 'check_cj;
+                                }
+                            }
+                        }
+                    }// for those strengthened
+                    if p_not_in_cj_parts.count_ones() > 1 {
+                        for xi_0 in p_not_in_cj_parts.trailing_zeros()
+                            ..32 - p_not_in_cj_parts.leading_zeros()
+                        {
+                            if !p_not_in_cj_parts.get(xi_0) {
+                                continue;
+                            }
+                            'check_xi_1: for xi_1 in xi_0 + 1..32 - p_not_in_cj_parts.leading_zeros() {
+                                if !p_not_in_cj_parts.get(xi_1) {
+                                    continue;
+                                }
+                                let xi_0_item =
+                                    label_context.past_subformulas[xi_0 as usize].clone();
+                                let xi_1_item =
+                                    label_context.past_subformulas[xi_1 as usize].clone();
+                                if cache[xi_0 as usize][cj as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_0 as usize][cj as usize] =
+                                        xi_0_item.clone().c_rewrite(cj);
+                                }
+                                if cache[xi_1 as usize][cj as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_1 as usize][cj as usize] =
+                                        xi_1_item.clone().c_rewrite(cj);
+                                }
+                                if !LabeledPLTL::content_equal(
+                                    &cache[xi_0 as usize][cj as usize],
+                                    &cache[xi_1 as usize][cj as usize],
+                                ) {
+                                    continue 'check_xi_1;
+                                }
+                                if cache[xi_0 as usize][ci as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_0 as usize][ci as usize] =
+                                        xi_0_item.clone().c_rewrite(ci);
+                                }
+                                if cache[xi_1 as usize][ci as usize] == LabeledPLTL::Bottom {
+                                    cache[xi_1 as usize][ci as usize] =
+                                        xi_1_item.clone().c_rewrite(ci);
+                                }
+                                if !LabeledPLTL::content_equal(
+                                    &cache[xi_0 as usize][ci as usize],
+                                    &cache[xi_1 as usize][ci as usize],
+                                ) {
+                                    continue 'check_cj;
+                                }
                             }
                         }
                     }
-                    result.push(cj);
                 }
-                result
-            })
-            .collect()
+                sub_result.push(cj);
+            }
+            result.push(sub_result);
+        }
+
+        result
     }
 
     pub fn new(ltl: &PLTL, pltl_context: &pltl::Context) -> Self {
         let (labeled_pltl, psf_context) = LabeledPLTL::new(ltl);
+
         let saturated_c_sets = Self::compute_saturated_c_set(&psf_context);
         let (u_items, v_items) = labeled_pltl.u_v_subformulas();
         let mut u_items: Vec<_> = u_items.into_iter().collect();
@@ -178,11 +300,17 @@ impl Context {
         let v_rewrite_cache = m_sets.iter().map(|_| ConcurrentMap::default()).collect();
         let u_rewrite_cache = n_sets.iter().map(|_| ConcurrentMap::default()).collect();
         let m_sets_items_under_c_sets = MSetUnderCCache::build(&u_items);
-        let m_set_under_c_rewrite_cache = m_sets_items_under_c_sets.iter().map(|m_under_c_cache| {
-            m_under_c_cache.cache.iter().map(|(c_set, _)| {
-                (*c_set, ConcurrentMap::default())
-            }).collect()
-        }).collect();
+        let m_set_under_c_rewrite_cache = (0..m_sets.len())
+            .map(|i| {
+                let c_entries = m_sets_items_under_c_sets[i]
+                    .cache
+                    .keys()
+                    .cloned()
+                    .map(|it| (it, ConcurrentMap::default()))
+                    .collect();
+                c_entries
+            })
+            .collect();
         Self {
             initial: labeled_pltl,
             pltl_context: pltl_context.clone(),
@@ -226,18 +354,27 @@ impl Context {
         c_set: u32,
         item: &LabeledPLTL,
     ) -> LabeledPLTL {
+        if matches!(
+            item,
+            LabeledPLTL::Top | LabeledPLTL::Bottom | LabeledPLTL::Atom(_) | LabeledPLTL::Not(_)
+        ) {
+            return item.clone();
+        }
         let masked_c_set = self.m_sets_items_under_c_sets[m_set as usize].mask & c_set;
         let entry = &self.m_set_under_c_rewrite_cache[m_set as usize][&masked_c_set];
         if let Some(result) = entry.get(item) {
-            return result.clone();
+            result.clone()
         } else {
-            let result = item.clone().v_rewrite(
-                &self.m_sets_items_under_c_sets[m_set as usize]
-                    .get(c_set as u32)
-                    .unwrap(),
-            ).simplify();
+            let result = item
+                .clone()
+                .v_rewrite(
+                    self.m_sets_items_under_c_sets[m_set as usize]
+                        .get(c_set)
+                        .unwrap(),
+                )
+                .simplify();
             entry.insert(item.clone(), result.clone());
-            return result;
+            result
         }
     }
 
@@ -265,17 +402,19 @@ impl Context {
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.label_context)?;
-        if self.saturated_c_sets.len() < 16 {
+        if self.saturated_c_sets.len() < 128 {
             for (i, s) in self.saturated_c_sets.iter().enumerate() {
-                writeln!(
-                    f,
-                    "J{}: {{{}}}",
-                    i,
-                    s.iter()
-                        .map(|x| x.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )?;
+                if s.len() != 1 << self.label_context.past_subformulas.len() {
+                    writeln!(
+                        f,
+                        "J{}: {{{}}}",
+                        i,
+                        s.iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                }
             }
         } else {
             writeln!(f, "J: <{}> Js", self.saturated_c_sets.len())?;
@@ -566,25 +705,65 @@ impl AllSubAutomatas {
                 makefile_content += "\n";
             }
         }
-        let file_name = "result.hoa".to_string();
-        makefile_content += &format!("{file_name}: ");
-        for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
-            for n_id in 0u32..(1 << self.safety_automatas.len()) {
-                makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+
+        if self.safety_automatas.len() > 2 {
+            for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
+                makefile_content += &format!("result_m_0b{m_id:b}.hoa:");
+                for n_id in 0u32..(1 << self.safety_automatas.len()) {
+                    makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                }
+                makefile_content += "\n\tautfilt --gra -o ";
+                makefile_content += &format!("result_m_0b{m_id:b}.hoa ");
+                for n_id in 0u32..(1 << self.safety_automatas.len()) {
+                    if n_id == 0 {
+                        makefile_content += &format!("-F rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                    } else {
+                        makefile_content +=
+                            &format!("--product-or=rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                    }
+                }
+                makefile_content += "\n";
             }
-        }
-        makefile_content +=
-            &format!("\n\tautfilt --gra --generic --complete -D -S -o {file_name} ");
-        for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
-            for n_id in 0u32..(1 << self.safety_automatas.len()) {
-                if m_id == 0 && n_id == 0 {
-                    makefile_content += &format!("-F rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+
+            let file_name = "result.hoa".to_string();
+            makefile_content += &format!("{file_name}: ");
+            for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
+                makefile_content += &format!("result_m_0b{m_id:b}.hoa ");
+            }
+            makefile_content += "\n\tautfilt --gra --generic --complete -D -S -o ";
+            makefile_content += &format!("{file_name} ");
+            for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
+                if m_id == 0 {
+                    makefile_content += &format!("-F result_m_0b{m_id:b}.hoa ");
                 } else {
-                    makefile_content += &format!("--product-or=rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                    makefile_content += &format!("--product-or=result_m_0b{m_id:b}.hoa ");
                 }
             }
+            makefile_content += "\n";
+        } else {
+            let file_name = "result.hoa".to_string();
+            makefile_content += &format!("{file_name}: ");
+            for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
+                for n_id in 0u32..(1 << self.safety_automatas.len()) {
+                    makefile_content += &format!("rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                }
+            }
+            makefile_content += "\n\tautfilt --gra --generic --complete -D -S -o ";
+            makefile_content += &format!("{file_name} ");
+            let mut first = true;
+            for m_id in 0u32..(1 << self.guarantee_automatas.len()) {
+                for n_id in 0u32..(1 << self.safety_automatas.len()) {
+                    if first {
+                        makefile_content += &format!("-F rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                        first = false;
+                    } else {
+                        makefile_content +=
+                            &format!("--product-or=rabin_0b{m_id:b}_0b{n_id:b}.hoa ");
+                    }
+                }
+            }
+            makefile_content += "\n";
         }
-        makefile_content += "\n";
         makefile_content
     }
 
@@ -666,7 +845,7 @@ impl AllSubAutomatas {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use std::time::Instant;
     #[test]
     fn test_to_files() {
         rayon::ThreadPoolBuilder::new()
@@ -683,39 +862,21 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_m_sets_items_under_c_sets() {
-        let (ltl, ltl_ctx) = PLTL::from_string("F ( r & (r S p))").unwrap();
+    fn test_new_context() {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build_global()
+            .unwrap();
+        let (ltl, ltl_ctx) =
+            PLTL::from_string(r#"Y(p S q) & ~Y(p ~S q) & (p B q)"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
+        let start = Instant::now();
         let ctx = Context::new(&ltl, &ltl_ctx);
+        let ctx_time = start.elapsed().as_nanos() as usize;
+        println!("ctx_time: {}ms", ctx_time / (1000 * 1000));
         println!("ctx: {ctx}");
-        let result = MSetUnderCCache::build(&ctx.u_items);
-        for (m_set, result_at_m) in result.iter().enumerate() {
-            println!("m_set: 0b{m_set:03b}");
-            println!("    mask: 0b{:09b}", result_at_m.mask);
-            for (c_set, items) in result_at_m.cache.iter() {
-                println!(
-                    "    c_set: 0b{:03b}, items: {}",
-                    c_set,
-                    items
-                        .iter()
-                        .map(|item| item.format(&ltl_ctx))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
-        // println!("ctx: {:?}", ctx.m_sets_items_under_c_sets);
-        // for (c_set, m_rewrite_results) in ctx.m_sets_items_under_c_sets.iter().enumerate() {
-        //     for (m_set, items) in m_rewrite_results.iter().enumerate() {
-        //         println!(
-        //             "m_set: 0b{m_set:02b}, c_set: 0b{c_set:02b}, items: {}",
-        //             items
-        //                 .iter()
-        //                 .map(|item| item.format(&ltl_ctx))
-        //                 .collect::<Vec<_>>()
-        //                 .join(", ")
-        //         );
-        //     }
-        // }
+        let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
+        let result = automatas.to_dots(&ctx, &ltl_ctx);
+        println!("{:?}", result);
     }
 }
