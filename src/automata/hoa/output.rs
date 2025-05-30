@@ -7,7 +7,10 @@ use super::{
     header::HeaderItem,
     HoaAutomaton, State,
 };
-use crate::automata::hoa::format::{AcceptanceName, Property};
+use crate::automata::{
+    hoa::format::{AcceptanceName, Property},
+    AbstractLabelExpression,
+};
 use itertools::Itertools;
 use std::fmt::Display;
 
@@ -230,7 +233,17 @@ impl Display for StateConjunction {
 
 impl Display for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}]", self.0)
+        if let AbstractLabelExpression::Conjunction(values) = &self.0
+            && values.is_empty()
+        {
+            write!(f, "[t]")
+        } else if let AbstractLabelExpression::Disjunction(values) = &self.0
+            && values.is_empty()
+        {
+            write!(f, "[t]")
+        } else {
+            write!(f, "[{}]", self.0)
+        }
     }
 }
 

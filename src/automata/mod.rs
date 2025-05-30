@@ -20,12 +20,7 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::{
-    fmt,
-    hash::Hash,
-    mem,
-    sync::RwLock,
-};
+use std::{fmt, hash::Hash, mem, sync::RwLock};
 
 pub mod guarantee;
 pub mod hoa;
@@ -186,8 +181,8 @@ impl Context {
                     }
                     // for those weakened
                     if p_in_cj_parts.count_ones() > 1 {
-                        for xi_0 in p_in_cj_parts.trailing_zeros()
-                            ..32 - p_in_cj_parts.leading_zeros()
+                        for xi_0 in
+                            p_in_cj_parts.trailing_zeros()..32 - p_in_cj_parts.leading_zeros()
                         {
                             if !p_in_cj_parts.get(xi_0) {
                                 continue;
@@ -230,7 +225,7 @@ impl Context {
                                 }
                             }
                         }
-                    }// for those strengthened
+                    } // for those strengthened
                     if p_not_in_cj_parts.count_ones() > 1 {
                         for xi_0 in p_not_in_cj_parts.trailing_zeros()
                             ..32 - p_not_in_cj_parts.leading_zeros()
@@ -238,7 +233,9 @@ impl Context {
                             if !p_not_in_cj_parts.get(xi_0) {
                                 continue;
                             }
-                            'check_xi_1: for xi_1 in xi_0 + 1..32 - p_not_in_cj_parts.leading_zeros() {
+                            'check_xi_1: for xi_1 in
+                                xi_0 + 1..32 - p_not_in_cj_parts.leading_zeros()
+                            {
                                 if !p_not_in_cj_parts.get(xi_1) {
                                     continue;
                                 }
@@ -867,8 +864,7 @@ mod tests {
             .num_threads(1)
             .build_global()
             .unwrap();
-        let (ltl, ltl_ctx) =
-            PLTL::from_string(r#"Y(p S q) & ~Y(p ~S q) & (p B q)"#).unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(r#"Y(p S q) & ~Y(p ~S q) & (p B q)"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let start = Instant::now();
         let ctx = Context::new(&ltl, &ltl_ctx);
@@ -877,6 +873,6 @@ mod tests {
         println!("ctx: {ctx}");
         let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
         let result = automatas.to_dots(&ctx, &ltl_ctx);
-        println!("{:?}", result);
+        println!("{result:?}");
     }
 }

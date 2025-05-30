@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{collections::HashMap, sync::RwLock};
+use std::sync::RwLock;
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -38,10 +38,7 @@ impl CacheItem {
     }
 }
 
-fn do_cache_local_past(
-    ltl: &LabeledPLTL,
-    result: &RwLock<Map<LabeledPLTL, CacheItem>>
-) {
+fn do_cache_local_past(ltl: &LabeledPLTL, result: &RwLock<Map<LabeledPLTL, CacheItem>>) {
     match ltl {
         LabeledPLTL::Top | LabeledPLTL::Bottom => {
             let mut cache = Map::default();
@@ -99,11 +96,14 @@ fn do_cache_local_past(
                 cache.insert((*letter, *past_st), result_value.clone());
                 cache.insert((*letter, *past_st | (1u32 << id)), result_value.clone());
             }
-            result.write().unwrap().insert(ltl.clone(), CacheItem {
-                atom_mask: content_entry.atom_mask,
-                past_st_mask: content_entry.past_st_mask | (1u32 << id),
-                cache,
-            });
+            result.write().unwrap().insert(
+                ltl.clone(),
+                CacheItem {
+                    atom_mask: content_entry.atom_mask,
+                    past_st_mask: content_entry.past_st_mask | (1u32 << id),
+                    cache,
+                },
+            );
         }
         LabeledPLTL::Next(content) => {
             cache_local_past(content, result);
@@ -201,8 +201,7 @@ fn do_cache_local_past(
                             .insert((result_atom, result_past_st), rhs_result.clone());
                         continue 'calc;
                     }
-                    let f_pu =
-                        do_local_post_update(ltl, result_atom, result_past_st, result);
+                    let f_pu = do_local_post_update(ltl, result_atom, result_past_st, result);
                     result_item.cache.insert(
                         (result_atom, result_past_st),
                         (rhs_result.clone() | (lhs_result.clone() & f_pu)).simplify(),
@@ -241,8 +240,7 @@ fn do_cache_local_past(
                             .insert((result_atom, result_past_st), rhs_result.clone());
                         continue 'calc;
                     }
-                    let f_pu =
-                        do_local_post_update(ltl, result_atom, result_past_st, result);
+                    let f_pu = do_local_post_update(ltl, result_atom, result_past_st, result);
                     result_item.cache.insert(
                         (result_atom, result_past_st),
                         (rhs_result.clone() & (lhs_result.clone() | f_pu)).simplify(),
@@ -277,10 +275,7 @@ fn do_cache_local_past(
     }
 }
 
-pub fn cache_local_past(
-    ltl: &LabeledPLTL,
-    result: &RwLock<Map<LabeledPLTL, CacheItem>>
-) {
+pub fn cache_local_past(ltl: &LabeledPLTL, result: &RwLock<Map<LabeledPLTL, CacheItem>>) {
     if result.read().unwrap().contains_key(ltl) {
         return;
     }
@@ -351,12 +346,7 @@ fn do_local_post_update(
         };
         if past_st.contains(id) {
             // println!("contains: {psf}");
-            let sub_result = do_local_after(
-                &psf.weaken_condition(),
-                letter,
-                past_st,
-                new_cache,
-            );
+            let sub_result = do_local_after(&psf.weaken_condition(), letter, past_st, new_cache);
             result = result & sub_result;
         }
     }
@@ -437,12 +427,9 @@ pub fn do_local_after(
                     }
                 }
             }
-            LabeledPLTL::BinaryTemporal { .. } => do_local_after(
-                &f.weaken_condition(),
-                letter,
-                past_st,
-                new_cache,
-            ),
+            LabeledPLTL::BinaryTemporal { .. } => {
+                do_local_after(&f.weaken_condition(), letter, past_st, new_cache)
+            }
         }
         .simplify(),
     }
@@ -502,11 +489,7 @@ mod tests {
         let (labeled_ltl, labeled_ctx) = LabeledPLTL::new(&ltl);
         let new_cache = RwLock::new(Map::default());
         cache_local_past(&labeled_ltl, &new_cache);
-        let result = after_function(
-            &labeled_ltl,
-            0b10,
-            &new_cache,
-        );
+        let result = after_function(&labeled_ltl, 0b10, &new_cache);
         println!("result: {result}");
         let result = after_function(&result, 0b00, &new_cache);
         println!("result: {result}");

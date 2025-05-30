@@ -674,33 +674,64 @@ impl LabeledPLTL {
             (LabeledPLTL::Bottom, LabeledPLTL::Bottom) => true,
             (LabeledPLTL::Atom(label), LabeledPLTL::Atom(other_label)) => label == other_label,
             (LabeledPLTL::Not(label), LabeledPLTL::Not(other_label)) => label == other_label,
-            (LabeledPLTL::Yesterday { weak, content, .. }, LabeledPLTL::Yesterday { weak: other_weak, content: other_content, .. }) => {
-                *weak == *other_weak && content.content_equal(other_content)
-            }
+            (
+                LabeledPLTL::Yesterday { weak, content, .. },
+                LabeledPLTL::Yesterday {
+                    weak: other_weak,
+                    content: other_content,
+                    ..
+                },
+            ) => *weak == *other_weak && content.content_equal(other_content),
             (LabeledPLTL::Next(content), LabeledPLTL::Next(other_content)) => {
                 content.content_equal(other_content)
             }
             (LabeledPLTL::Logical(op, content), LabeledPLTL::Logical(other_op, other_content)) => {
-                op == other_op && content.iter().zip(other_content.iter()).all(|(x, y)| x.content_equal(y))
+                op == other_op
+                    && content
+                        .iter()
+                        .zip(other_content.iter())
+                        .all(|(x, y)| x.content_equal(y))
             }
             (
-                LabeledPLTL::Until { lhs, rhs, weak: self_weak },
+                LabeledPLTL::Until {
+                    lhs,
+                    rhs,
+                    weak: self_weak,
+                },
                 LabeledPLTL::Until {
                     lhs: other_lhs,
                     rhs: other_rhs,
                     weak: other_weak,
                 },
-            ) => self_weak == other_weak && lhs.content_equal(other_lhs) && rhs.content_equal(other_rhs),
+            ) => {
+                self_weak == other_weak
+                    && lhs.content_equal(other_lhs)
+                    && rhs.content_equal(other_rhs)
+            }
             (
-                LabeledPLTL::Release { lhs, rhs, weak: self_weak },
+                LabeledPLTL::Release {
+                    lhs,
+                    rhs,
+                    weak: self_weak,
+                },
                 LabeledPLTL::Release {
                     lhs: other_lhs,
                     rhs: other_rhs,
                     weak: other_weak,
                 },
-            ) => self_weak == other_weak && lhs.content_equal(other_lhs) && rhs.content_equal(other_rhs),
+            ) => {
+                self_weak == other_weak
+                    && lhs.content_equal(other_lhs)
+                    && rhs.content_equal(other_rhs)
+            }
             (
-                LabeledPLTL::BinaryTemporal { lhs, rhs, weak: self_weak, op: self_op, .. },
+                LabeledPLTL::BinaryTemporal {
+                    lhs,
+                    rhs,
+                    weak: self_weak,
+                    op: self_op,
+                    ..
+                },
                 LabeledPLTL::BinaryTemporal {
                     lhs: other_lhs,
                     rhs: other_rhs,
@@ -708,10 +739,12 @@ impl LabeledPLTL {
                     op: other_op,
                     ..
                 },
-            ) => self_weak == other_weak
-                && self_op.strengthen() == other_op.strengthen()
-                && lhs.content_equal(other_lhs)
-                && rhs.content_equal(other_rhs),
+            ) => {
+                self_weak == other_weak
+                    && self_op.strengthen() == other_op.strengthen()
+                    && lhs.content_equal(other_lhs)
+                    && rhs.content_equal(other_rhs)
+            }
             _ => false,
         }
     }

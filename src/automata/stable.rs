@@ -1,18 +1,13 @@
-use std::time::Instant;
-
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
-
+use super::{hoa::format::AcceptanceName, weakening_conditions, Context, HoaAutomatonBuilder};
 use crate::{
     pltl::{
         self,
         labeled::{after_function::after_function, LabeledPLTL},
         BinaryOp,
     },
-    utils::BitSet32,
+    utils::{BitSet, BitSet32},
 };
-
-use super::{hoa::format::AcceptanceName, weakening_conditions, Context, HoaAutomatonBuilder};
-use crate::utils::BitSet;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 pub fn transition(
     ctx: &Context,
@@ -128,7 +123,8 @@ pub fn dump(
                     letter,
                 );
                 // for T, T and F, F, we don't need to check the weakening condition
-                let weakening_condition_next_state = if (next_state.0 == LabeledPLTL::Bottom || next_state.0 == LabeledPLTL::Top)
+                let weakening_condition_next_state = if (next_state.0 == LabeledPLTL::Bottom
+                    || next_state.0 == LabeledPLTL::Top)
                     && next_state.0 == next_state.1
                 {
                     Vec::new()
@@ -156,6 +152,7 @@ pub fn dump(
 mod tests {
     use super::*;
     use crate::{automata::Context, pltl::PLTL};
+    use std::time::Instant;
 
     #[test]
     fn test_dump_hoa() {
