@@ -1,5 +1,5 @@
 use core::fmt;
-use std::sync::RwLock;
+use std::{collections::HashMap, sync::RwLock};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -86,20 +86,22 @@ fn do_cache_local_past(
                 },
             );
         }
-        LabeledPLTL::Yesterday { weak, content, .. } => {
+        LabeledPLTL::Yesterday { id, weak, content } => {
             cache_local_past(content, result);
+            let content_entry = result.read().unwrap().get(content).unwrap().clone();
             let mut cache = Map::default();
-            cache.insert(
-                (BitSet32::default(), BitSet32::default()),
-                if *weak {
-                    LabeledPLTL::Top
-                } else {
-                    LabeledPLTL::Bottom
-                },
-            );
+            let result_value = if *weak {
+                LabeledPLTL::Top
+            } else {
+                LabeledPLTL::Bottom
+            };
+            for ((letter, past_st), _) in content_entry.cache.iter() {
+                cache.insert((*letter, *past_st), result_value.clone());
+                cache.insert((*letter, *past_st | (1u32 << id)), result_value.clone());
+            }
             result.write().unwrap().insert(ltl.clone(), CacheItem {
-                atom_mask: BitSet32::default(),
-                past_st_mask: BitSet32::default(),
+                atom_mask: content_entry.atom_mask,
+                past_st_mask: content_entry.past_st_mask | (1u32 << id),
                 cache,
             });
         }
@@ -170,12 +172,10 @@ fn do_cache_local_past(
             result.write().unwrap().insert(ltl.clone(), result_item);
         }
         LabeledPLTL::Until { lhs, rhs, .. } => {
-            // rayon::scope(|s| {
-            //     s.spawn(|_| cache_local_past(lhs, result));
-            //     s.spawn(|_| cache_local_past(rhs, result));
-            // });
-            cache_local_past(lhs, result);
-            cache_local_past(rhs, result);
+            rayon::scope(|s| {
+                s.spawn(|_| cache_local_past(lhs, result));
+                s.spawn(|_| cache_local_past(rhs, result));
+            });
             let read = result.read().unwrap();
             let lhs_entry = read.get(lhs).unwrap();
             let rhs_entry = read.get(rhs).unwrap();
@@ -213,12 +213,10 @@ fn do_cache_local_past(
             result.write().unwrap().insert(ltl.clone(), result_item);
         }
         LabeledPLTL::Release { lhs, rhs, .. } => {
-            // rayon::scope(|s| {
-            //     s.spawn(|_| cache_local_past(lhs, result));
-            //     s.spawn(|_| cache_local_past(rhs, result));
-            // });
-            cache_local_past(lhs, result);
-            cache_local_past(rhs, result);
+            rayon::scope(|s| {
+                s.spawn(|_| cache_local_past(lhs, result));
+                s.spawn(|_| cache_local_past(rhs, result));
+            });
             let read = result.read().unwrap();
             let lhs_entry = read.get(lhs).unwrap();
             let rhs_entry = read.get(rhs).unwrap();
@@ -255,12 +253,10 @@ fn do_cache_local_past(
             result.write().unwrap().insert(ltl.clone(), result_item);
         }
         LabeledPLTL::BinaryTemporal { id, lhs, rhs, .. } => {
-            // rayon::scope(|s| {
-            //     s.spawn(|_| cache_local_past(lhs, result));
-            //     s.spawn(|_| cache_local_past(rhs, result));
-            // });
-            cache_local_past(lhs, result);
-            cache_local_past(rhs, result);
+            rayon::scope(|s| {
+                s.spawn(|_| cache_local_past(lhs, result));
+                s.spawn(|_| cache_local_past(rhs, result));
+            });
             // this one does not need to be parallel with the above two
             // since wc is either one of, or a combination of lhs and rhs
             let wc = ltl.weaken_condition();
@@ -341,6 +337,7 @@ fn do_local_post_update(
     // println!("+ do_local_post_update({f}, 0b{letter:b}, 0b{past_st:b})");
     let mut first_part = f.clone();
     first_part = first_part.c_rewrite(past_st);
+    // println!("first_part<0b{past_st:b}>: {first_part}");
     // println!("first_part: {first_part}");
     let psfs = f.past_subformulas();
     let mut result = first_part;

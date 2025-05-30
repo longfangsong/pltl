@@ -132,37 +132,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_dump_bbb() {
+    fn test_dump() {
         rayon::ThreadPoolBuilder::new()
             .num_threads(1)
             .build_global()
             .unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string(r#"inR <-> (enterR & !( Y(!enterI) & Y(Y(!enterR)) & Y(Y(Y(!enterR))) ) & (!enterI S enterR))"#).unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(r#"Y(Y(p))"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         println!("ltl: {ltl}");
         let ctx = Context::new(&ltl, &ltl_ctx);
         println!("ctx: {ctx}");
         let dump = dump(&ctx, &ltl_ctx);
-        // for (state, transitions) in &dump.transitions {
-        //     println!(
-        //         "{}",
-        //         state
-        //             .iter()
-        //             .map(|x| x.to_string())
-        //             .collect::<Vec<_>>()
-        //             .join(", ")
-        //     );
-        //     for (character, transition) in transitions.iter().enumerate() {
-        //         println!(
-        //             "  0b{:b} -> {}",
-        //             character,
-        //             transition
-        //                 .iter()
-        //                 .map(|x| x.to_string())
-        //                 .collect::<Vec<_>>()
-        //                 .join(", ")
-        //         );
-        //     }
-        // }
+        for (state, transitions) in &dump.transitions {
+            println!(
+                "{}",
+                state
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            for (character, transition) in transitions.iter().enumerate() {
+                println!(
+                    "  0b{:b} -> {}",
+                    character,
+                    transition
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+        }
     }
 }
