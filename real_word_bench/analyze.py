@@ -27,12 +27,13 @@ def extract_and_csv_total_times() -> str:
                 # Convert minutes to seconds if present
                 minutes = int(minutes_str.strip(':'))
                 total_seconds += minutes * 60
-            
+
             # Add the seconds and milliseconds part
             total_seconds += float(seconds_ms_str)
-            
-            total_times_in_seconds.append(total_seconds)
 
+            total_times_in_seconds.append(total_seconds)
+        elif line.strip().lower().startswith('x'):
+            total_times_in_seconds.append(-1)
     # Manually construct the CSV string
     csv_lines = []
 

@@ -161,7 +161,6 @@ impl LabeledPLTL {
             } => {
                 let mut result = lhs.v_subformulas();
                 result.extend(rhs.v_subformulas());
-                result.insert(self.clone());
                 result
             }
             LabeledPLTL::Until {
@@ -179,6 +178,7 @@ impl LabeledPLTL {
                     std::hash::BuildHasherDefault<fxhash::FxHasher>,
                 > = lhs.v_subformulas();
                 result.extend(rhs.v_subformulas());
+                result.insert(self.clone());
                 result
             }
             LabeledPLTL::BinaryTemporal { lhs, rhs, .. } => {
@@ -215,7 +215,6 @@ impl LabeledPLTL {
             } => {
                 let mut result = lhs.u_subformulas();
                 result.extend(rhs.u_subformulas());
-                result.insert(self.clone());
                 result
             }
             LabeledPLTL::Until {
@@ -233,6 +232,7 @@ impl LabeledPLTL {
                     std::hash::BuildHasherDefault<fxhash::FxHasher>,
                 > = lhs.u_subformulas();
                 result.extend(rhs.u_subformulas());
+                result.insert(self.clone());
                 result
             }
             LabeledPLTL::BinaryTemporal { lhs, rhs, .. } => {

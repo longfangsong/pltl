@@ -62,6 +62,7 @@ def main():
     for i, _ in enumerate(code_this):
         print(f"time /Applications/GOAL.app/Contents/Resources/Java/gc determinization -m modifiedsafra -o /tmp/temp{i}-d.hoa /tmp/temp{i}.xml")
 
+    print(f"rm /tmp/output*")
     for i, this in enumerate(code_this):
         print(f"mkdir /tmp/output{i}")
         print(f"gtime -f \"%M\" /Users/longfangsong/Projects/pltl/target/release/pltl2dra -O /tmp/output{i} \"{this}\"")

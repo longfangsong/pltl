@@ -4,7 +4,9 @@ use crate::{
         labeled::{self, after_function::CacheItem, LabeledPLTL, StructureDiff},
         PLTL,
     },
-    utils::{character_to_label_expression, powerset_vec, BitSet, BitSet32, ConcurrentMap, Map},
+    utils::{
+        character_to_label_expression, powerset_vec, BitSet, BitSet32, ConcurrentMap, Map,
+    },
 };
 use hoa::{
     body::{Edge, Label},
@@ -117,9 +119,10 @@ pub struct Context {
     pub label_context: labeled::Context,
     // ci => cj
     pub saturated_c_sets: Vec<Vec<u32>>,
+    pub m_sets_items_under_c_sets: Vec<MSetUnderCCache>,
+
     pub u_items: Vec<LabeledPLTL>,
     pub v_items: Vec<LabeledPLTL>,
-    pub m_sets_items_under_c_sets: Vec<MSetUnderCCache>,
 
     pub n_sets: Vec<Vec<LabeledPLTL>>,
     pub m_sets: Vec<Vec<LabeledPLTL>>,
@@ -133,6 +136,38 @@ pub struct Context {
 }
 
 impl Context {
+    fn compute_u_contains_v(&self) -> Vec<BitSet32> {
+        let mut result = Vec::with_capacity(self.u_items.len());
+        for u_item in self.u_items.iter() {
+            let u_item_v_subformulas = u_item.v_subformulas();
+            let mut mask = BitSet32::default();
+            for (i, v_item) in self.v_items.iter().enumerate() {
+                if u_item_v_subformulas.contains(v_item) {
+                    mask.set_bit(i as u32);
+                }
+            }
+            debug_assert_eq!(mask.is_empty(), u_item_v_subformulas.is_empty());
+            result.push(mask);
+        }
+        result
+    }
+
+    fn compute_v_contains_u(&self) -> Vec<BitSet32> {
+        let mut result = Vec::with_capacity(self.v_items.len());
+        for v_item in self.v_items.iter() {
+            let v_item_u_subformulas = v_item.u_subformulas();
+            let mut mask = BitSet32::default();
+            for (i, u_item) in self.u_items.iter().enumerate() {
+                if v_item_u_subformulas.contains(u_item) {
+                    mask.set_bit(i as u32);
+                }
+            }
+            debug_assert_eq!(mask.is_empty(), v_item_u_subformulas.is_empty());
+            result.push(mask);
+        }
+        result
+    }
+
     fn compute_saturated_c_set(label_context: &labeled::Context) -> Vec<Vec<u32>> {
         let mut same_shape_pairs = (0..label_context.past_subformulas.len())
             .map(|i| 1 << i)
@@ -422,6 +457,32 @@ impl fmt::Display for Context {
         for (i, v) in self.v_items.iter().enumerate() {
             writeln!(f, "v{i}: {v}")?;
         }
+        let u_contains_v = self.compute_u_contains_v();
+        let v_contains_u = self.compute_v_contains_u();
+        for (i, u) in u_contains_v.iter().enumerate() {
+            writeln!(f, "u{i} contains v: 0b{u:b}")?;
+            writeln!(
+                f,
+                "               {}",
+                u.sub_sets()
+                    .iter()
+                    .map(|x| format!("0b{x:b}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        for (i, v) in v_contains_u.iter().enumerate() {
+            writeln!(f, "v{i} contains u: 0b{v:b}")?;
+            writeln!(
+                f,
+                "               {}",
+                v.sub_sets()
+                    .iter()
+                    .map(|x| format!("0b{x:b}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
         if self.n_sets.len() < 16 {
             for (i, n) in self.n_sets.iter().enumerate() {
                 writeln!(
@@ -552,11 +613,23 @@ impl<S: Hash + Eq, F: Fn(&S, &pltl::Context) -> String + Clone> HoaAutomatonBuil
 }
 
 #[derive(Debug, Clone)]
+pub struct WithMask<T> {
+    pub mask: BitSet32,
+    pub content: Map<BitSet32, T>,
+}
+
+impl<T> WithMask<T> {
+    pub fn get(&self, id: BitSet32) -> Option<&T> {
+        self.content.get(&(self.mask & id))
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct AllSubAutomatas {
     // u_item_id -> n_set -> automata
-    pub guarantee_automatas: Vec<Vec<HoaAutomaton>>,
+    pub guarantee_automatas: Vec<WithMask<HoaAutomaton>>,
     // v_item_id -> m_set -> automata
-    pub safety_automatas: Vec<Vec<HoaAutomaton>>,
+    pub safety_automatas: Vec<WithMask<HoaAutomaton>>,
     // m_set -> automata
     pub stable_automatas: Vec<HoaAutomaton>,
 }
@@ -564,70 +637,69 @@ pub struct AllSubAutomatas {
 impl AllSubAutomatas {
     pub fn new(ctx: &Context, pltl_ctx: &pltl::Context) -> Self {
         let weakening_conditions_automata = weakening_conditions::dump(ctx, pltl_ctx);
-        let (guarantee_automatas, (safety_automatas, stable_automatas)) = rayon::join(
-            || {
-                ctx.u_items
-                    .par_iter()
-                    .enumerate()
-                    .map(|(u_item, _)| {
-                        let mut guarantee_automatas_for_u_item: Vec<_> =
-                            Vec::with_capacity(ctx.n_sets.len());
-                        for (n_set, _) in ctx.n_sets.iter().enumerate() {
+        let construct_guarantee_automatas = || {
+            let u_contains_v = ctx.compute_u_contains_v();
+            u_contains_v
+                .par_iter()
+                .enumerate()
+                .map(|(u_item, &mask)| {
+                    let content = mask
+                        .sub_sets()
+                        .par_iter()
+                        .map(|&n_set| {
                             let guarantee_automata = guarantee::dump(
                                 ctx,
                                 pltl_ctx,
                                 u_item as u32,
-                                n_set as u32,
+                                n_set,
                                 &weakening_conditions_automata,
                             );
-                            guarantee_automatas_for_u_item.push(guarantee_automata.build(pltl_ctx));
-                        }
-                        guarantee_automatas_for_u_item
-                    })
-                    .collect()
-            },
-            || {
-                rayon::join(
-                    || {
-                        ctx.v_items
-                            .par_iter()
-                            .enumerate()
-                            .map(|(v_item, _)| {
-                                let mut safety_automatas_for_v_item: Vec<_> =
-                                    Vec::with_capacity(ctx.m_sets.len());
-                                for (m_set, _) in ctx.m_sets.iter().enumerate() {
-                                    let safety_automata = safety::dump(
-                                        ctx,
-                                        pltl_ctx,
-                                        v_item as u32,
-                                        m_set as u32,
-                                        &weakening_conditions_automata,
-                                    );
-                                    safety_automatas_for_v_item
-                                        .push(safety_automata.build(pltl_ctx));
-                                }
-                                safety_automatas_for_v_item
-                            })
-                            .collect()
-                    },
-                    || {
-                        ctx.m_sets
-                            .par_iter()
-                            .enumerate()
-                            .map(|(m_set, _)| {
-                                let stable_automata = stable::dump(
-                                    ctx,
-                                    pltl_ctx,
-                                    m_set as u32,
-                                    &weakening_conditions_automata,
-                                );
-                                stable_automata.build(pltl_ctx)
-                            })
-                            .collect()
-                    },
-                )
-            },
-        );
+                            (n_set, guarantee_automata.build(pltl_ctx))
+                        })
+                        .collect();
+                    WithMask { mask, content }
+                })
+                .collect::<Vec<_>>()
+        };
+        let construct_safety_automatas = || {
+            let v_contains_u = ctx.compute_v_contains_u();
+            v_contains_u
+                .par_iter()
+                .enumerate()
+                .map(|(v_item, &mask)| {
+                    let content = mask
+                        .sub_sets()
+                        .par_iter()
+                        .map(|&m_set| {
+                            let safety_automata = safety::dump(
+                                ctx,
+                                pltl_ctx,
+                                v_item as u32,
+                                m_set,
+                                &weakening_conditions_automata,
+                            );
+                            (m_set, safety_automata.build(pltl_ctx))
+                        })
+                        .collect();
+                    WithMask { mask, content }
+                })
+                .collect::<Vec<_>>()
+        };
+        let construct_stable_automatas = || {
+            ctx.m_sets
+                .par_iter()
+                .enumerate()
+                .map(|(m_set, _)| {
+                    let stable_automata =
+                        stable::dump(ctx, pltl_ctx, m_set as u32, &weakening_conditions_automata);
+                    stable_automata.build(pltl_ctx)
+                })
+                .collect()
+        };
+        let (guarantee_automatas, (safety_automatas, stable_automatas)) =
+            rayon::join(construct_guarantee_automatas, || {
+                rayon::join(construct_safety_automatas, construct_stable_automatas)
+            });
         Self {
             guarantee_automatas,
             safety_automatas,
@@ -644,17 +716,23 @@ impl AllSubAutomatas {
                     makefile_content += &format!("{file_name}: ");
                     makefile_content += &m_id
                         .iter()
-                        .map(|u_item_id| format!("guarantee_{u_item_id}_0b{n_id:b}.hoa "))
+                        .map(|u_item_id| {
+                            let n_under_mask =
+                                self.guarantee_automatas[u_item_id as usize].mask & n_id;
+                            format!("guarantee_{u_item_id}_0b{n_under_mask:b}.hoa ")
+                        })
                         .join(" ");
                     makefile_content += &format!("\n\tautfilt --Buchi -o {file_name} ");
                     makefile_content += &m_id
                         .iter()
                         .enumerate()
                         .map(|(id, u_item_id)| {
+                            let n_under_mask =
+                                self.guarantee_automatas[u_item_id as usize].mask & n_id;
                             if id == 0 {
-                                format!("-F guarantee_{u_item_id}_0b{n_id:b}.hoa ")
+                                format!("-F guarantee_{u_item_id}_0b{n_under_mask:b}.hoa ")
                             } else {
-                                format!("--product=guarantee_{u_item_id}_0b{n_id:b}.hoa ")
+                                format!("--product=guarantee_{u_item_id}_0b{n_under_mask:b}.hoa ")
                             }
                         })
                         .join(" ");
@@ -665,17 +743,23 @@ impl AllSubAutomatas {
                     makefile_content += &format!("{file_name}: ");
                     makefile_content += &n_id
                         .iter()
-                        .map(|v_item_id| format!("safety_0b{m_id:b}_{v_item_id}.hoa "))
+                        .map(|v_item_id| {
+                            let m_under_mask =
+                                self.safety_automatas[v_item_id as usize].mask & m_id;
+                            format!("safety_0b{m_under_mask:b}_{v_item_id}.hoa ")
+                        })
                         .join(" ");
                     makefile_content += &format!("\n\tautfilt --coBuchi -o {file_name} ");
                     makefile_content += &n_id
                         .iter()
                         .enumerate()
                         .map(|(i, v_item_id)| {
+                            let m_under_mask =
+                                self.safety_automatas[v_item_id as usize].mask & m_id;
                             if i == 0 {
-                                format!("-F safety_0b{m_id:b}_{v_item_id}.hoa ")
+                                format!("-F safety_0b{m_under_mask:b}_{v_item_id}.hoa ")
                             } else {
-                                format!("--product=safety_0b{m_id:b}_{v_item_id}.hoa ")
+                                format!("--product=safety_0b{m_under_mask:b}_{v_item_id}.hoa ")
                             }
                         })
                         .join(" ");
@@ -767,13 +851,13 @@ impl AllSubAutomatas {
     pub fn to_files(&self) -> Vec<(String, String)> {
         let mut result = Vec::new();
         for (u_item_id, automatas_for_n_set) in self.guarantee_automatas.iter().enumerate() {
-            for (n_set, automata) in automatas_for_n_set.iter().enumerate() {
+            for (n_set, automata) in automatas_for_n_set.content.iter() {
                 let file_name = format!("guarantee_{u_item_id}_0b{n_set:b}.hoa");
                 result.push((file_name, to_hoa(automata)));
             }
         }
         for (v_item_id, automatas_for_m_set) in self.safety_automatas.iter().enumerate() {
-            for (m_set, automata) in automatas_for_m_set.iter().enumerate() {
+            for (m_set, automata) in automatas_for_m_set.content.iter() {
                 let file_name = format!("safety_0b{m_set:b}_{v_item_id}.hoa");
                 result.push((file_name, to_hoa(automata)));
             }
@@ -800,9 +884,9 @@ impl AllSubAutomatas {
         let mut safety_dots = Vec::new();
         let mut stable_dots = Vec::new();
         for (u_item_id, automatas_for_n_set) in self.guarantee_automatas.iter().enumerate() {
-            for (n_set, automata) in automatas_for_n_set.iter().enumerate() {
+            for (n_set, automata) in automatas_for_n_set.content.iter() {
                 let psi = ctx.u_items[u_item_id].format(pltl_ctx);
-                let n_items = ctx.n_sets[n_set]
+                let n_items = ctx.n_sets[*n_set as usize]
                     .iter()
                     .map(|pltl| pltl.format(pltl_ctx))
                     .collect::<Vec<_>>()
@@ -814,9 +898,9 @@ impl AllSubAutomatas {
             }
         }
         for (v_item_id, automatas_for_m_set) in self.safety_automatas.iter().enumerate() {
-            for (m_set, automata) in automatas_for_m_set.iter().enumerate() {
+            for (m_set, automata) in automatas_for_m_set.content.iter() {
                 let psi = ctx.v_items[v_item_id].format(pltl_ctx);
-                let m_items = ctx.m_sets[m_set]
+                let m_items = ctx.m_sets[*m_set as usize]
                     .iter()
                     .map(|pltl| pltl.format(pltl_ctx))
                     .collect::<Vec<_>>()
@@ -864,15 +948,15 @@ mod tests {
             .num_threads(1)
             .build_global()
             .unwrap();
-        let (ltl, ltl_ctx) = PLTL::from_string(r#"Y(p S q) & ~Y(p ~S q) & (p B q)"#).unwrap();
+        let (ltl, ltl_ctx) = PLTL::from_string(r#"¬(g0 & g1) & ¬(g0 & g2) & ¬(g1 & g0) & ¬(g1 & g2) & ¬(g2 & g0) & ¬(g2 & g1) & G(F(¬r0 ~S g0)) & G(F(¬r1 ~S g1)) & G(F(¬r2 ~S g2)) & G(g0 -> (r0 | Y(r0 B ¬g0))) & G(g1 -> (r1 | Y(r1 B ¬g1))) & G(g2 -> (r2 | Y(r2 B ¬g2)))"#).unwrap();
         let ltl = ltl.to_no_fgoh().to_negation_normal_form().simplify();
         let start = Instant::now();
         let ctx = Context::new(&ltl, &ltl_ctx);
         let ctx_time = start.elapsed().as_nanos() as usize;
         println!("ctx_time: {}ms", ctx_time / (1000 * 1000));
         println!("ctx: {ctx}");
-        let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
-        let result = automatas.to_dots(&ctx, &ltl_ctx);
-        println!("{result:?}");
+        // let automatas = AllSubAutomatas::new(&ctx, &ltl_ctx);
+        // let result = automatas.to_dots(&ctx, &ltl_ctx);
+        // println!("{result:?}");
     }
 }
